@@ -1,0 +1,13 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "ai.tickerscout/ticker-scout",
+  "description": "Free SEC filing fundamentals: financial statements, 10-K/10-Q summaries, 8-K events. No API key.",
+  "version": "1.0.0",
+  "websiteUrl": "https://tickerscout.ai/mcp/",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.tickerscout.ai/mcp"
+    }
+  ]
+}

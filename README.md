@@ -1,0 +1,126 @@
+# Ticker Scout MCP server
+
+Free SEC filing fundamentals for AI agents, over the Model Context Protocol. No API key, no signup, no paywall.
+
+```
+https://mcp.tickerscout.ai/mcp
+```
+
+It exposes the data published at [tickerscout.ai](https://tickerscout.ai) as six tools: financial statements, 10-K and 10-Q summaries, and 8-K event histories for a growing set of US public companies, all derived from their own filings with the SEC. Every figure cites the accession number of the filing it came from, so anything the server returns can be checked against sec.gov.
+
+## Connect
+
+**Claude Code**
+
+```
+claude mcp add --transport http ticker-scout https://mcp.tickerscout.ai/mcp
+```
+
+**Claude on the web or desktop**
+
+Settings, then Connectors, then Add custom connector, and paste the URL.
+
+**Cursor, and any client with an `mcpServers` config**
+
+```json
+{
+  "mcpServers": {
+    "ticker-scout": {
+      "url": "https://mcp.tickerscout.ai/mcp"
+    }
+  }
+}
+```
+
+**Clients that only speak stdio**
+
+```json
+{
+  "mcpServers": {
+    "ticker-scout": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://mcp.tickerscout.ai/mcp"]
+    }
+  }
+}
+```
+
+## Tools
+
+| Tool | Arguments | Returns |
+| --- | --- | --- |
+| `list_companies` | `query` (optional) | Every covered company with its latest fiscal period and next expected filing. Resolves a company name to a ticker. |
+| `get_company` | `ticker` | Identity and coverage manifest: name, CIK, exchange, SIC industry, fiscal period held, source accession. |
+| `get_key_figures` | `ticker` | Headline figures for the latest reported period, each with its year-over-year change, exact amount and source accession. |
+| `get_financials` | `ticker`, `sections` (optional) | Income statement, balance sheet, cash flow, segment revenue, per-share figures. |
+| `get_narrative` | `ticker`, `section` (optional) | Business, risk factors, MD&A, legal proceedings, subsequent events from the latest 10-K and 10-Q. |
+| `get_events` | `ticker`, `section` (optional) | Material 8-K filings over roughly the trailing five quarters. |
+
+Tickers are case-insensitive, and `BRK.B` and `BRK-B` both resolve.
+
+### Section slicing
+
+This is the reason to use the server rather than fetching the files directly. `financials.json` averages 58KB and `narrative.md` averages 38KB, and a question usually needs one part of one of them.
+
+`get_narrative` called without a section returns an index of the document's sections with a one-line summary of each, so an agent can pick one and fetch only that. Pass `section: "all"` for the whole thing.
+
+`get_financials` called without sections returns the whole file, and `available_sections` in the response lists what that company has. Section names are not the same across companies: a bank carries different top-level keys from a semiconductor company, and an insurer from both. Ask for what is there rather than guessing.
+
+Every `get_financials` response includes a `meta` header with the company's units, reporting currency and fiscal period, even when you ask for a single section. All money is in actual dollars, not millions, and all share counts are actual shares.
+
+## Example
+
+```
+> What did NVIDIA earn last quarter?
+
+  get_key_figures(ticker: "NVDA")
+
+  Q1 FY2027, ended April 26, 2026
+  Revenue           $81,615,000,000   up 85.2%
+  Net income        $58,321,000,000   up 210.6%
+  Diluted EPS       $2.39             up 214.5%
+  Operating income  $53,536,000,000   up 147.4%
+  Gross margin      74.9%             up 14.4 points
+  All from SEC accession 0001045810-26-000052
+```
+
+## Data policy
+
+- Everything is derived from public SEC filings: 10-K, 10-Q and 8-K. Nothing is estimated and nothing is fabricated. Where a filing does not disclose a figure, it is omitted and the omission is explained.
+- No market price data. No quotes, no market caps, no price snapshots. This is a fundamentals source.
+- Data is refreshed each quarter, shortly after a company files. Coverage and the period held for each company are in `list_companies`.
+- This is factual synthesis of public filings. It is not investment advice.
+
+Free to read and cite. Please attribute "Ticker Scout (tickerscout.ai)".
+
+## How it works
+
+A stateless Cloudflare Worker using `createMcpHandler` from `@modelcontextprotocol/server`, speaking streamable HTTP at `/mcp`.
+
+The server stores no data. Every tool call fetches the corresponding file from `https://tickerscout.ai` through the Cloudflare edge cache and shapes the response. There is no database, no snapshot and no fallback copy: if the upstream file cannot be fetched, the tool returns an error naming the URL and the status rather than serving something stale.
+
+```
+src/
+  index.ts       Worker entrypoint, tool registration
+  upstream.ts    Fetching, edge caching, the error policy
+  tickers.ts     Ticker normalization, coverage search, near matches
+  markdown.ts    Section parsing for the .md documents
+  financials.ts  Headline condensing and unit-safe slicing
+  respond.ts     Result shaping, source URL and attribution
+```
+
+## Development
+
+```
+npm install
+npm test          # unit tests for the pure modules
+npm run dev       # local server on http://localhost:8787/mcp
+npm run smoke     # live end-to-end check, pass a URL to target a deployment
+npm run deploy
+```
+
+`npm test` covers the pure logic. `test/smoke.mjs` calls every tool against a running server for a deliberately shape-diverse set of companies plus three negative cases, and is the check that matters before shipping.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

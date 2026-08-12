@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tickerscout-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // workers.dev stays on: /mcp is not an indexable page, so a second hostname
+  // costs nothing, and it is a useful target for testing a deploy before the
+  // custom domain picks it up.
+  "workers_dev": true
+
+  // No "routes" key. mcp.tickerscout.ai is attached to this Worker as a custom
+  // domain, which wrangler leaves alone.
+}

@@ -1,3 +1,5 @@
+import { normalizeTicker } from "./tickers.ts";
+
 /**
  * Keys that describe the file rather than carry statement data. They are lifted
  * into every response's `meta` header and are not offered as sliceable sections.
@@ -156,9 +158,19 @@ export function sliceFinancials(
 
   const unknown = wanted.filter((s) => !available.includes(s));
   if (unknown.length) {
+    // Some files' own `notes` name an omitted key in prose ("...the exact scaling
+    // note read for every statement used is recorded in units_notes_seen"), so an
+    // agent reading the file end to end will ask for one. Say where it actually is
+    // rather than only that it is not a section.
+    const omitted = unknown.filter((s) => (OMITTED_KEYS as readonly string[]).includes(s));
     throw new Error(
       `Unknown financials section(s) for ${String(doc.ticker)}: ${unknown.join(", ")}. ` +
-        `Available sections: ${available.join(", ")}.`,
+        `Available sections: ${available.join(", ")}.` +
+        (omitted.length
+          ? ` ${omitted.join(", ")} is a record of how this file was built, not company ` +
+            `data, so it is not served here; it is still in the raw file at ` +
+            `https://tickerscout.ai/${normalizeTicker(String(doc.ticker))}/financials.json.`
+          : ""),
     );
   }
 

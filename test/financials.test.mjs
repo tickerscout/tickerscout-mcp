@@ -107,7 +107,13 @@ test("units_notes_seen is dropped entirely: not meta, not a section", () => {
   const one = sliceFinancials(doc, ["annual"]);
   assert.equal(one.meta.units_notes_seen, undefined);
 
-  // asking for it by name is an error naming the sections that do exist
+  // asking for it by name is an error naming the sections that do exist, and
+  // pointing at the raw file -- some bundles' own notes mention the key in prose
   assert.throws(() => sliceFinancials(doc, ["units_notes_seen"]), /units_notes_seen/);
   assert.throws(() => sliceFinancials(doc, ["units_notes_seen"]), /annual/);
+  assert.throws(() => sliceFinancials(doc, ["units_notes_seen"]),
+                /tickerscout\.ai\/nvda\/financials\.json/);
+  // an ordinary typo does not get the raw-file sentence
+  assert.throws(() => sliceFinancials(doc, ["incom_statement"]),
+                (e) => !/raw file/.test(e.message) && /incom_statement/.test(e.message));
 });

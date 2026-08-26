@@ -3,8 +3,17 @@
 //
 // Tickers are chosen from the shapes that have broken renderers before:
 // NVDA conventional, JPM bank_metrics, BRK-B nested insurance sections and the
-// only hyphenated path, C the shortest ticker, WMT the one bundle with no
-// headline block.
+// only hyphenated path, C the shortest ticker, WMT a retailer whose fiscal year
+// runs far ahead of the calendar (FY27Q1 in mid-2026).
+//
+// WMT was once the one bundle with no headline block, and this file asserted that
+// get_key_figures failed usefully for it. That bundle has since been regenerated
+// and every covered company now carries a headline, so the assertion was passing
+// judgement on a condition that no longer exists and started failing. The
+// no-headline path is covered where it can still be exercised: see
+// "condenseHeadline throws a useful error when there is no headline block" in
+// test/financials.test.mjs. Do not re-add a live case for it without a real
+// bundle that lacks one.
 const ENDPOINT = process.argv[2] ?? "http://localhost:8787/mcp";
 const TICKERS = ["NVDA", "JPM", "BRK-B", "C", "WMT"];
 
@@ -75,15 +84,7 @@ for (const t of TICKERS) {
   }
 
   const keys = await callTool("get_key_figures", { ticker: t });
-  if (t === "WMT") {
-    check(
-      "WMT get_key_figures errors clearly",
-      keys.isError && keys.body.includes("get_financials"),
-      keys.body.slice(0, 120),
-    );
-  } else {
-    check("get_key_figures", !keys.isError && keys.body.includes("metrics"));
-  }
+  check("get_key_figures", !keys.isError && keys.body.includes("metrics"));
 
   const narr = await callTool("get_narrative", { ticker: t });
   check("get_narrative returns an index", !narr.isError && narr.body.includes("sections"));

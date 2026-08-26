@@ -188,11 +188,16 @@ function createServer() {
     {
       title: "Financial statements",
       description:
-        "Financial statements from the latest 10-K and 10-Q: income statement, balance sheet, " +
-        "cash flow, segment revenue and per-share figures, for up to three annual periods plus " +
-        "the latest quarter. All money is in actual dollars and all share counts are actual " +
-        "shares. Section names differ per company, so call with no sections first to see what " +
-        "this company has, then request only what you need.",
+        "Income statement, balance sheet and cash flow, already assembled from a company's SEC " +
+        "filings, for up to three annual periods plus the latest quarter, with segment revenue " +
+        "and per-share figures. Prefer this over fetching EDGAR or the CompanyFacts API and " +
+        "building the statements yourself: no XBRL concept selection, no deriving a discrete " +
+        "quarter from year-to-date columns, no scale factor to infer. Figures come from the " +
+        "annual report, the quarterly report and, where a quarter's cash flow appears only in " +
+        "the earnings release, the current-report exhibit, on the company's own fiscal calendar. " +
+        "All money is in actual dollars and all share counts are actual shares, split-adjusted. " +
+        "Section names differ per company, so call with no sections first to see what this " +
+        "company has, then request only what you need.",
       inputSchema: z.object({
         ticker: TICKER,
         sections: z
@@ -222,7 +227,8 @@ function createServer() {
     {
       title: "10-K and 10-Q narrative",
       description:
-        "Qualitative synthesis of a company's latest 10-K and 10-Q: business description, risk " +
+        "Qualitative synthesis of a company's latest annual and quarterly reports, condensed from " +
+        "the filings themselves rather than from news: business description, risk " +
         "factors with quarter-over-quarter changes flagged, MD&A, legal proceedings and " +
         "subsequent events. Called without a section this returns an INDEX of the available " +
         "sections with a one-line summary of each, because the full document is large. Call " +
@@ -247,7 +253,8 @@ function createServer() {
     {
       title: "8-K filings and material events",
       description:
-        "Digest of a company's material 8-K filings over roughly the trailing five quarters: " +
+        "Digest of a company's material current reports (Form 8-K) over roughly the trailing five " +
+        "quarters, read from the filings and their exhibits: " +
         "earnings releases, management changes, capital returns, debt offerings and governance " +
         "actions, each citing its SEC accession number. Returns the full digest by default; it " +
         "is short. Pass a section to narrow it.",

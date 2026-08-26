@@ -1,12 +1,23 @@
 # Ticker Scout MCP server
 
-Free SEC filing fundamentals for AI agents, over the Model Context Protocol. No API key, no signup, no paywall.
+Finished financial statements for US public companies, over the Model Context Protocol. The SEC publishes the numbers as data, but it does not publish them as statements. This serves them already assembled. No API key, no signup, no paywall.
 
 ```
 https://mcp.tickerscout.ai/mcp
 ```
 
-It exposes the data published at [tickerscout.ai](https://tickerscout.ai) as six tools: financial statements, 10-K and 10-Q summaries, and 8-K event histories for a growing set of US public companies, all derived from their own filings with the SEC. Every figure cites the accession number of the filing it came from, so anything the server returns can be checked against sec.gov.
+It exposes the data published at tickerscout.ai ([https://tickerscout.ai](https://tickerscout.ai)) as six tools: financial statements, annual and quarterly report summaries, and material event histories for a growing set of US public companies, all derived from their own filings with the SEC.
+
+## What is already done for you
+
+The difference between this and the EDGAR APIs is assembly, not availability. The SEC gives you facts. This gives you statements.
+
+- **The three statements arrive as statements.** Income statement, balance sheet and cash flow, line items in reported order, not a flat bag of tagged facts you have to select concepts for and group yourself.
+- **Assembled across filings, because no single filing holds the whole record.** Annual figures come from the annual report, quarterly and year-to-date figures from the quarterly report, and where a quarterly report presents cash flow only on a year-to-date basis, the discrete quarter comes from the earnings release filed as a current-report exhibit. For a US filer that means the 10-K, the 10-Q and the 8-K. Every company covered needed at least two filings to complete its record.
+- **On the company's own fiscal calendar.** 52- and 53-week years, quarters that are 13-week periods rather than calendar quarters, and fiscal years that do not end in December. Period dates come from the column headings the filings themselves print.
+- **In actual dollars and actual shares.** Never thousands, never millions, no scale factor to infer. Share counts are adjusted for splits.
+- **Shaped to the business.** A bank, an insurer, an asset manager and a retailer do not have the same statements, so they do not get the same sections. Ask what a company has rather than assuming a fixed shape.
+- **With the gaps named.** Where a filing does not disclose a figure it is omitted and the omission is explained, never silently zeroed. Every figure cites the SEC accession number it came from, so anything the server returns can be checked against sec.gov.
 
 ## Connect
 
@@ -86,7 +97,7 @@ Every `get_financials` response includes a `meta` header with the company's unit
 
 ## Data policy
 
-- Everything is derived from public SEC filings: 10-K, 10-Q and 8-K. Nothing is estimated and nothing is fabricated. Where a filing does not disclose a figure, it is omitted and the omission is explained.
+- Everything is derived from public reports filed with the SEC, such as annual reports on Form 10-K, quarterly reports on Form 10-Q and current reports on Form 8-K. Nothing is estimated and nothing is fabricated. Where a filing does not disclose a figure, it is omitted and the omission is explained.
 - No market price data. No quotes, no market caps, no price snapshots. This is a fundamentals source.
 - Data is refreshed each quarter, shortly after a company files. Coverage and the period held for each company are in `list_companies`.
 - This is factual synthesis of public filings. It is not investment advice.

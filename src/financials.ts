@@ -16,11 +16,34 @@ const META_KEYS = [
   "converted_to_usd",
   "units",
   "fiscal_year_convention",
-  "units_notes_seen",
   "fiscal_period",
   "company_details",
   "next_filing",
 ] as const;
+
+/**
+ * Keys dropped from every response entirely: not lifted into `meta`, and not
+ * offered as a sliceable section either.
+ *
+ * `units_notes_seen` is the generating agent's record of the scaling note printed
+ * on each statement it read ("In millions, except per-share amounts"). It is kept
+ * in financials.json so the pipeline's audit stage can compare it against the note
+ * the auditor reads independently -- a fact about how the file was BUILT, not a
+ * fact about the company. It used to sit in META_KEYS, which meant ~800 tokens of
+ * filing parentheticals rode on EVERY response, including a one-section slice
+ * (AAPL 29 entries, MSFT 34).
+ *
+ * Removing it from META_KEYS is not enough on its own: it is an object, so the
+ * shape test in listSections would then promote it to a section and it would come
+ * back in every unsliced response. Hence a third category.
+ *
+ * This does NOT weaken the units guarantee sliceFinancials exists to give. What
+ * protects a slice of figures from a six-order-of-magnitude misread is the
+ * top-level `units` scalar -- "actual dollars (not millions)" -- which metaHeader
+ * still carries, along with every other scalar caveat. An agent that wants the
+ * per-statement notes can read financials.json directly; the file still has them.
+ */
+const OMITTED_KEYS = ["units_notes_seen"] as const;
 
 export type FinancialsDoc = Record<string, unknown>;
 
@@ -95,8 +118,8 @@ function isStructured(value: unknown): boolean {
 }
 
 export function listSections(doc: FinancialsDoc): string[] {
-  const meta = new Set<string>(META_KEYS);
-  return Object.keys(doc).filter((k) => !meta.has(k) && isStructured(doc[k]));
+  const hidden = new Set<string>([...META_KEYS, ...OMITTED_KEYS]);
+  return Object.keys(doc).filter((k) => !hidden.has(k) && isStructured(doc[k]));
 }
 
 /**
@@ -106,12 +129,15 @@ export function listSections(doc: FinancialsDoc): string[] {
  * being something the caller has to know to ask for.
  */
 export function metaHeader(doc: FinancialsDoc): Record<string, unknown> {
+  const omitted = new Set<string>(OMITTED_KEYS);
   const out: Record<string, unknown> = {};
   for (const k of META_KEYS) {
     if (k in doc) out[k] = doc[k];
   }
+  // The scalar sweep is a shape test, so an omitted key that ever arrived as a
+  // string rather than an object would ride along here. Guard it by name.
   for (const [k, v] of Object.entries(doc)) {
-    if (!(k in out) && !isStructured(v)) out[k] = v;
+    if (!(k in out) && !omitted.has(k) && !isStructured(v)) out[k] = v;
   }
   return out;
 }

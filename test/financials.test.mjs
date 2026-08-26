@@ -85,3 +85,29 @@ test("sliceFinancials rejects an unknown section and names the valid ones", () =
   assert.throws(() => sliceFinancials(DOC, ["income_statement"]), /income_statement/);
   assert.throws(() => sliceFinancials(DOC, ["income_statement"]), /annual/);
 });
+
+// units_notes_seen is the generating agent's own record of the scaling note it
+// read on each statement, kept in financials.json for the audit. It is neither a
+// meta caveat nor a section: ~800 tokens of filing parentheticals that used to
+// ride on every response. Dropping it from META_KEYS alone would have promoted it
+// to a section by the shape test, so both paths are pinned here.
+test("units_notes_seen is dropped entirely: not meta, not a section", () => {
+  const doc = {
+    ...DOC,
+    units_notes_seen: { "FY2026 10-K income statement": "in millions, except per share" },
+  };
+  assert.ok(!listSections(doc).includes("units_notes_seen"));
+
+  const all = sliceFinancials(doc);
+  assert.equal(all.units_notes_seen, undefined);
+  assert.equal(all.meta.units_notes_seen, undefined);
+  // the caveat that actually guards against a scale misread still rides along
+  assert.equal(all.meta.units, "actual dollars");
+
+  const one = sliceFinancials(doc, ["annual"]);
+  assert.equal(one.meta.units_notes_seen, undefined);
+
+  // asking for it by name is an error naming the sections that do exist
+  assert.throws(() => sliceFinancials(doc, ["units_notes_seen"]), /units_notes_seen/);
+  assert.throws(() => sliceFinancials(doc, ["units_notes_seen"]), /annual/);
+});

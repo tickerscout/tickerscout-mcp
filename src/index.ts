@@ -127,8 +127,9 @@ function createServer() {
       title: "Company profile and coverage manifest",
       description:
         "Company identity and coverage manifest: name, CIK, exchange, SIC industry, the fiscal " +
-        "period of the latest data with the SEC accession number it came from, and the " +
-        "predicted next filing.",
+        "period of the latest data, the SEC filings that record is built from - the annual " +
+        "report and the latest quarterly report, each with its own fiscal year, accession " +
+        "number and EDGAR link - and the predicted next filing.",
       inputSchema: z.object({ ticker: TICKER }),
       annotations: READ_ONLY,
     },
@@ -144,6 +145,12 @@ function createServer() {
             cik: doc.cik,
             details: doc.company_details,
             fiscal_period: doc.fiscal_period,
+            // Both filings behind the record, not just the latest one. fiscal_period
+            // names the quarterly report alone, so an agent asking what a company's
+            // business or risk factors were drawn from had no way to learn that it was
+            // the FY2025 10-K, or to cite it. Each entry carries its own fiscal year,
+            // accession and EDGAR URL.
+            source_filings: doc.source_filings,
             next_filing: doc.next_filing,
             published: doc.published,
             update_policy: doc.update_policy,

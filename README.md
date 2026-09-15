@@ -1,12 +1,12 @@
 # Ticker Scout MCP server
 
-Finished financial statements for US public companies, over the Model Context Protocol. The SEC publishes the numbers as data, but it does not publish them as statements. This serves them already assembled. No API key, no signup, no paywall.
+An agent-native data layer for SEC filings, over the Model Context Protocol. Finished financial statements for US public companies, and the filings themselves read and synthesized. The SEC publishes the numbers as data, but it does not publish them as statements. This serves them already assembled. No API key, no signup, no paywall.
 
 ```
 https://mcp.tickerscout.ai/mcp
 ```
 
-It exposes the data published at tickerscout.ai ([https://tickerscout.ai](https://tickerscout.ai)) as six tools: financial statements, annual and quarterly report summaries, and material event histories for a growing set of US public companies, all derived from their own filings with the SEC.
+It exposes the data published at tickerscout.ai ([https://tickerscout.ai](https://tickerscout.ai)) as six tools: financial statements, the annual and quarterly reports read and synthesized, and material event histories for a growing set of US public companies, all derived from their own filings with the SEC.
 
 ## What is already done for you
 

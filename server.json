@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "ai.tickerscout/ticker-scout",
-  "description": "Income statement, balance sheet and cash flow, already assembled from SEC filings. No API key.",
+  "description": "Agent-native SEC filing data: statements assembled, filings read and synthesized. No API key.",
   "version": "1.0.1",
   "repository": {
     "url": "https://github.com/tickerscout/tickerscout-mcp",

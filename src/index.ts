@@ -78,7 +78,7 @@ async function markdownTool(
 }
 
 function createServer() {
-  const server = new McpServer({ name: "ticker-scout", version: "1.0.0" });
+  const server = new McpServer({ name: "ticker-scout", version: "1.0.2" });
 
   server.registerTool(
     "list_companies",

@@ -18,6 +18,7 @@ The difference between this and the EDGAR APIs is assembly, not availability. Th
 - **In actual dollars and actual shares.** Never thousands, never millions, no scale factor to infer. Share counts are adjusted for splits.
 - **Shaped to the business.** A bank, an insurer, an asset manager and a retailer do not have the same statements, so they do not get the same sections. Ask what a company has rather than assuming a fixed shape.
 - **With the gaps named.** Where a filing does not disclose a figure it is omitted and the omission is explained, never silently zeroed. Every figure cites the SEC accession number it came from, so anything the server returns can be checked against sec.gov.
+- **Figures link to the line of the filing that prints them.** `get_financials` with `sections: ["figure_sources"]` returns a block that mirrors the figures' paths: `figure_sources.annual[0].income_statement.net_income` is the source of `annual[0].income_statement.net_income`. Each entry reads `<document>#<anchor>`, and `figure_sources.documents[<document>]` + `#<anchor>` is a sec.gov URL that opens the filing at that number. Wherever the filing tags a figure, it has an entry; a figure with none was calculated (margins, free cash flow, trailing twelve months) or comes from an untagged earnings release.
 
 ## Connect
 
@@ -63,7 +64,7 @@ Settings, then Connectors, then Add custom connector, and paste the URL.
 | `list_companies` | `query` (optional) | Every covered company with its latest fiscal period and next expected filing. Resolves a company name to a ticker. |
 | `get_company` | `ticker` | Identity and coverage manifest: name, CIK, exchange, SIC industry, fiscal period held, source accession. |
 | `get_key_figures` | `ticker` | Headline figures for the latest reported period, each with its year-over-year change, exact amount and source accession. |
-| `get_financials` | `ticker`, `sections` (optional) | Income statement, balance sheet, cash flow, segment revenue, per-share figures. |
+| `get_financials` | `ticker`, `sections` (optional) | Income statement, balance sheet, cash flow, segment revenue, per-share figures. On request, `figure_sources`: a sec.gov link to the line of the filing that prints each figure. |
 | `get_narrative` | `ticker`, `section` (optional) | Business, risk factors, MD&A, legal proceedings, subsequent events from the latest 10-K and 10-Q. |
 | `get_events` | `ticker`, `section` (optional) | Material 8-K filings over roughly the trailing five quarters. |
 
@@ -75,7 +76,7 @@ This is the reason to use the server rather than fetching the files directly. `f
 
 `get_narrative` called without a section returns an index of the document's sections with a one-line summary of each, so an agent can pick one and fetch only that. Pass `section: "all"` for the whole thing.
 
-`get_financials` called without sections returns the whole file, and `available_sections` in the response lists what that company has. Section names are not the same across companies: a bank carries different top-level keys from a semiconductor company, and an insurer from both. Ask for what is there rather than guessing.
+`get_financials` called without sections returns the whole file except `figure_sources`, which comes only when asked for by name, and `available_sections` in the response lists what that company has. Section names are not the same across companies: a bank carries different top-level keys from a semiconductor company, and an insurer from both. Ask for what is there rather than guessing.
 
 Every `get_financials` response includes a `meta` header with the company's units, reporting currency and fiscal period, even when you ask for a single section. All money is in actual dollars, not millions, and all share counts are actual shares.
 

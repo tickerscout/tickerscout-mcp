@@ -117,3 +117,13 @@ test("units_notes_seen is dropped entirely: not meta, not a section", () => {
   assert.throws(() => sliceFinancials(doc, ["incom_statement"]),
                 (e) => !/raw file/.test(e.message) && /incom_statement/.test(e.message));
 });
+
+test("figure_sources is listed but only served when asked for by name", () => {
+  const doc = { ...DOC, figure_sources: { documents: { d1: "https://www.sec.gov/x.htm" } } };
+  assert.ok(listSections(doc).includes("figure_sources"));
+  assert.ok(!("figure_sources" in sliceFinancials(doc)));
+  assert.deepEqual(
+    sliceFinancials(doc, ["figure_sources"]).figure_sources,
+    doc.figure_sources,
+  );
+});

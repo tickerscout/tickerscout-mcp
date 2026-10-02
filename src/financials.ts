@@ -47,6 +47,16 @@ const META_KEYS = [
  */
 const OMITTED_KEYS = ["units_notes_seen"] as const;
 
+/**
+ * Sections served only when asked for by name. `figure_sources` mirrors the paths of
+ * every figure the SEC filing tags, with the sec.gov link that opens the filing at
+ * that number. It is a real section and is listed in `available_sections`, but it
+ * roughly doubles as many keys as the statements themselves, so a whole-file call
+ * leaves it out: an agent that wants sources asks for them, one that wants numbers
+ * never pays for them.
+ */
+const ON_REQUEST_KEYS = ["figure_sources"] as const;
+
 export type FinancialsDoc = Record<string, unknown>;
 
 export interface CondensedMetric {
@@ -154,7 +164,9 @@ export function sliceFinancials(
   sections?: string[],
 ): Record<string, unknown> {
   const available = listSections(doc);
-  const wanted = sections && sections.length ? sections : available;
+  const onRequest = new Set<string>(ON_REQUEST_KEYS);
+  const wanted =
+    sections && sections.length ? sections : available.filter((s) => !onRequest.has(s));
 
   const unknown = wanted.filter((s) => !available.includes(s));
   if (unknown.length) {

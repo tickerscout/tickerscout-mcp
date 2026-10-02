@@ -78,7 +78,7 @@ async function markdownTool(
 }
 
 function createServer() {
-  const server = new McpServer({ name: "ticker-scout", version: "1.0.2" });
+  const server = new McpServer({ name: "ticker-scout", version: "1.0.3" });
 
   server.registerTool(
     "list_companies",
@@ -204,7 +204,10 @@ function createServer() {
         "the earnings release, the current-report exhibit, on the company's own fiscal calendar. " +
         "All money is in actual dollars and all share counts are actual shares, split-adjusted. " +
         "Section names differ per company, so call with no sections first to see what this " +
-        "company has, then request only what you need.",
+        "company has, then request only what you need. To trace a figure to its source, " +
+        "request the figure_sources section: it mirrors the figures' paths, and each entry " +
+        "joins with figure_sources.documents into a sec.gov link that opens the filing at the " +
+        "line printing that number. It is never included unless requested by name.",
       inputSchema: z.object({
         ticker: TICKER,
         sections: z
@@ -212,7 +215,8 @@ function createServer() {
           .optional()
           .describe(
             "Top-level sections to return, for example annual, quarterly, " +
-              "trailing_twelve_months, notes, uncertainties. Omit for the whole file. " +
+              "trailing_twelve_months, notes, uncertainties, figure_sources. Omit for the " +
+              "whole file, which leaves out figure_sources. " +
               "An unknown name returns the valid list for that company.",
           ),
       }),

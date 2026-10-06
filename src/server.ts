@@ -39,7 +39,7 @@ function toolDefinitions(): ToolDefinition[] {
 }
 
 /**
- * Registration order is the order clients list the tools in: the six original tools
+ * Registration order is the order clients list the tools in: the main six tools
  * first, then periods and statements, one tool per line item, sources and conventions,
  * and the narrative, events and search tools last.
  *

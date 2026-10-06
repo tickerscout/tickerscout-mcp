@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 
 const CORE = ["list_companies", "get_company", "get_key_figures", "get_financials", "get_narrative", "get_events"];
 
-test("the six original tools are registered first, in their original order", () => {
+test("the main six tools are registered first, in order", () => {
   assert.deepEqual(toolNames().slice(0, 6), CORE);
 });
 

@@ -10,9 +10,8 @@ import { loadLatestFinancials, loadMarkdown, loadRecord, resolveCompany } from "
 import { READ_ONLY, RECORD, TICKER, guard, resolveRecordArg } from "./shared.ts";
 
 /**
- * The six original tools. Their defaults are unchanged since 1.0: called the way they always
- * were, they return what they always did. The optional `record` argument added in 2.0 reads an
- * earlier published record instead of the latest one.
+ * The main six tools: a company's whole record, or any section of it, in one call. The
+ * optional `record` argument reads an earlier published record instead of the latest one.
  */
 
 /**

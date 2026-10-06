@@ -59,7 +59,7 @@ Settings, then Connectors, then Add custom connector, and paste the URL.
 
 ## Start here
 
-The six original tools still answer most questions in one call, and work exactly as they did in 1.x. The other 91 go straight to one thing.
+The main six tools answer most questions in one call. The other 91 go straight to one thing.
 
 | Question | Call |
 | --- | --- |
@@ -165,7 +165,7 @@ Every value carries the SEC accession number of the filing it came from and, whe
 
 ## All 97 tools
 
-### Original tools (unchanged; `record` added)
+### The main six
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |

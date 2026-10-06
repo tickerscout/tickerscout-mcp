@@ -55,7 +55,7 @@ console.log(`Smoke testing ${ENDPOINT}\n`);
 const tools = await call("tools/list", {});
 const names = (tools.result?.tools ?? []).map((t) => t.name);
 const CORE = ["list_companies", "get_company", "get_key_figures", "get_financials", "get_narrative", "get_events"];
-check("the six original tools are listed first", CORE.every((n, i) => names[i] === n), names.slice(0, 6).join(","));
+check("the main six tools are listed first", CORE.every((n, i) => names[i] === n), names.slice(0, 6).join(","));
 check("the full tool set is listed", names.length >= 90, String(names.length));
 
 const list = await callTool("list_companies", {});

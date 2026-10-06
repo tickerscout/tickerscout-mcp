@@ -1,4 +1,5 @@
-// Live end-to-end check against a deployed MCP endpoint.
+// Live end-to-end check against a deployed MCP endpoint. The full per-company sweep of every
+// tool runs offline against a local copy of the site: see test/sweep.mjs.
 // Usage: node test/smoke.mjs https://mcp.tickerscout.ai/mcp
 //
 // Tickers are chosen from the shapes that have broken renderers before:
@@ -52,13 +53,10 @@ function check(label, condition, detail = "") {
 console.log(`Smoke testing ${ENDPOINT}\n`);
 
 const tools = await call("tools/list", {});
-const names = (tools.result?.tools ?? []).map((t) => t.name).sort();
-check(
-  "six tools listed",
-  names.join(",") ===
-    "get_company,get_events,get_financials,get_key_figures,get_narrative,list_companies",
-  names.join(","),
-);
+const names = (tools.result?.tools ?? []).map((t) => t.name);
+const CORE = ["list_companies", "get_company", "get_key_figures", "get_financials", "get_narrative", "get_events"];
+check("the six original tools are listed first", CORE.every((n, i) => names[i] === n), names.slice(0, 6).join(","));
+check("the full tool set is listed", names.length >= 90, String(names.length));
 
 const list = await callTool("list_companies", {});
 check("list_companies returns coverage", !list.isError && list.body.includes("coverage_count"));
@@ -100,6 +98,41 @@ for (const t of TICKERS) {
   const ev = await callTool("get_events", { ticker: t });
   check("get_events returns full text", !ev.isError && ev.body.includes("Source:"));
 }
+
+console.log("\nTools added in 2.0");
+
+const rev = await callTool("get_revenue", { ticker: "NVDA" });
+check("get_revenue names the record's field", !rev.isError && rev.body.includes('"name_in_record"') && rev.body.includes("sec.gov"));
+
+const aapl = await callTool("get_revenue", { ticker: "AAPL", period: "latest annual" });
+check("AAPL revenue is reported as total_net_sales", aapl.body.includes('"total_net_sales"'));
+
+const exact = await callTool("get_figure", { ticker: "AAPL", figure: "total_net_sales" });
+check("get_figure answers a record name exactly", !exact.isError && exact.body.includes("exact name in the record"));
+
+const periods = await callTool("list_periods", { ticker: "NVDA" });
+check("list_periods returns fiscal years and quarters", !periods.isError && periods.body.includes('"quarters"'));
+
+const old = await callTool("get_period", { ticker: "NVDA", period: "FY2015" });
+check("a period before the data says so", !old.isError && old.body.includes("going back that far"));
+
+const older = await callTool("get_net_income", { ticker: "NVDA", period: "Q1 FY2027" });
+check("a quarter only an older record holds is found", !older.isError && older.body.includes("Q1 FY2027"));
+
+const fx = await callTool("get_currency_conversion", { ticker: "TSM" });
+check("get_currency_conversion returns rates for a foreign issuer", !fx.isError && fx.body.includes("twd_per_usd"));
+
+const acc = await callTool("get_accession_numbers", { ticker: "JPM" });
+check("get_accession_numbers lists accessions", !acc.isError && acc.body.includes("edgar_index_url"));
+
+const risk = await callTool("get_risk_factors", { ticker: "BRK-B" });
+check("get_risk_factors returns the section", !risk.isError && risk.body.includes("Risk"));
+
+const search = await callTool("search_text", { ticker: "NVDA", query: "export" });
+check("search_text finds passages", !search.isError && search.body.includes('"passages"'));
+
+const cmp = await callTool("compare_companies", { tickers: ["NVDA", "JPM", "WMT"], figure: "net income" });
+check("compare_companies returns a row per company", !cmp.isError && ["NVDA", "JPM", "WMT"].every((t) => cmp.body.includes(`"${t}"`)));
 
 console.log("\nNegative cases");
 

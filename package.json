@@ -1,6 +1,6 @@
 {
   "name": "tickerscout-mcp",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "deploy": "wrangler deploy",
     "type-check": "tsc --noEmit",
     "test": "node --test test/*.test.mjs",
-    "smoke": "node test/smoke.mjs"
+    "smoke": "node test/smoke.mjs",
+    "sweep": "node test/sweep.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

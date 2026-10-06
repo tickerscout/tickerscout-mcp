@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "ai.tickerscout/ticker-scout",
-  "description": "Agent-native SEC data: statements assembled, filings synthesized, figures linked to source. No key.",
-  "version": "1.0.3",
+  "description": "Agent-native SEC data, 97 tools: statements assembled, every line item, filings synthesized. No key.",
+  "version": "2.0.0",
   "repository": {
     "url": "https://github.com/tickerscout/tickerscout-mcp",
     "source": "github"

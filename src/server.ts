@@ -6,7 +6,19 @@ import { registerFigureTools } from "./tools/figures.ts";
 import { registerReferenceTools } from "./tools/reference.ts";
 import { registerDocumentTools } from "./tools/documents.ts";
 
-export const SERVER_VERSION = "3.0.0";
+export const SERVER_VERSION = "3.0.1";
+
+/**
+ * Guidance that applies across tools, sent once at initialization. ChatGPT reads the first
+ * 512 characters most closely, so the units, the citation and the limits come first.
+ */
+export const SERVER_INSTRUCTIONS =
+  "Financial statements and filing summaries for public companies, assembled from their SEC " +
+  "filings (10-K, 10-Q, 8-K; 20-F and 6-K for foreign issuers). All money is in actual dollars, " +
+  "not millions. Every figure carries the SEC accession number of its filing; cite it, and the " +
+  "sec_link where one is given. Fiscal years and quarters are each company's own. There are no " +
+  "stock prices, market data or estimates, and nothing here is investment advice. If unsure which " +
+  "tool fits, call guide.";
 
 type ToolDefinition = [name: string, config: unknown, handler: unknown];
 
@@ -45,7 +57,7 @@ function toolDefinitions(): ToolDefinition[] {
  * Kept out of index.ts because a Worker's entry module may export only handlers.
  */
 export function createServer() {
-  const server = new McpServer({ name: "ticker-scout", version: SERVER_VERSION });
+  const server = new McpServer({ name: "ticker-scout", version: SERVER_VERSION }, { instructions: SERVER_INSTRUCTIONS });
   const register = server.registerTool.bind(server) as unknown as (n: string, c: unknown, h: unknown) => void;
   for (const [name, config, handler] of toolDefinitions()) register(name, config, handler);
   return server;

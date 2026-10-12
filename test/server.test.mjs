@@ -60,3 +60,32 @@ test("tools/list stays small enough to sit in an agent's context", async () => {
   assert.ok(result.tools.length <= 30, `${result.tools.length} tools`);
   assert.ok(JSON.stringify(result).length < 40_000, `${JSON.stringify(result).length} bytes`);
 });
+
+test("every tool states all three safety hints as explicit booleans", async () => {
+  // ChatGPT's plugin review requires readOnlyHint, destructiveHint and openWorldHint on every tool.
+  const { createMcpHandler } = await import("@modelcontextprotocol/server");
+  const { createServer } = await import("../src/server.ts");
+  const handler = createMcpHandler(createServer);
+  const req = new Request("http://local/mcp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+  });
+  const text = await (await handler.fetch(req)).text();
+  const line = text.split("\n").find((l) => l.startsWith("data: ")) ?? text;
+  for (const t of JSON.parse(line.replace(/^data: /, "")).result.tools) {
+    for (const hint of ["readOnlyHint", "destructiveHint", "openWorldHint"]) {
+      assert.equal(typeof t.annotations?.[hint], "boolean", `${t.name} ${hint}`);
+    }
+    assert.equal(t.annotations.readOnlyHint, true, t.name);
+    assert.equal(t.annotations.destructiveHint, false, t.name);
+    // Plugin directories forbid descriptions that steer the model toward this server over others.
+    assert.doesNotMatch(t.description, /\bprefer (it|this)\b|\binstead of (EDGAR|the SEC)|CompanyFacts/i, t.name);
+  }
+});
+
+test("the server sends instructions, with the essentials in the first 512 characters", async () => {
+  const { SERVER_INSTRUCTIONS } = await import("../src/server.ts");
+  assert.ok(SERVER_INSTRUCTIONS.length <= 512, String(SERVER_INSTRUCTIONS.length));
+  for (const must of ["actual dollars", "accession", "investment advice"]) assert.ok(SERVER_INSTRUCTIONS.includes(must), must);
+});

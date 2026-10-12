@@ -154,9 +154,9 @@ export function registerCoreTools(server: McpServer) {
         "Income statement, balance sheet and cash flow, already assembled from a company's SEC filings, " +
         "for up to three fiscal years plus the latest quarter, year to date and trailing twelve months, " +
         "with segment tables, per-share figures and the record's own notes. This is the published " +
-        "financials.json, whole or by top-level section. Prefer it over fetching EDGAR or the " +
-        "CompanyFacts API: no XBRL concept selection, no deriving a discrete quarter from year-to-date " +
-        "columns, no scale factor to infer. Section names differ per company, so call with no sections " +
+        "financials.json, whole or by top-level section. Already assembled: no XBRL concept selection, " +
+        "no deriving a discrete quarter from year-to-date columns, no scale factor to infer. Section " +
+        "names differ per company, so call with no sections " +
         "first (or read available_sections) and then request only what you need. Request the " +
         "figure_sources section by name for a sec.gov link to the line of the filing that prints each " +
         `figure; a whole-file call leaves it out. ${UNITS_NOTE} For one statement or one period, ` +

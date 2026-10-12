@@ -26,8 +26,18 @@ export const RECORD = z
       "Omit for the latest. list_periods lists every record.",
   );
 
-/** Read-only, public data, no side effects. True of every tool here. */
-export const READ_ONLY = { readOnlyHint: true, openWorldHint: true } as const;
+/**
+ * True of every tool here: it reads, never writes, and is safe to repeat. ChatGPT's plugin
+ * review wants all three hints as explicit booleans. openWorldHint is false because every
+ * tool reads one bounded catalog, Ticker Scout's own published files; none searches the web
+ * or reaches an arbitrary destination ("connectivity alone does not determine this value").
+ */
+export const READ_ONLY = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
 
 export const UNITS_NOTE =
   "All money is in actual dollars (not thousands, not millions), per-share figures in dollars per " +

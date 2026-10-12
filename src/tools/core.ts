@@ -3,76 +3,27 @@ import { z } from "zod";
 
 import { fetchJson, sourceUrl } from "../upstream.ts";
 import { loadTickers, matchCompanies } from "../tickers.ts";
-import { findSection, sectionIndex, splitSections } from "../markdown.ts";
 import { condenseHeadline, listSections, sliceFinancials, type FinancialsDoc } from "../financials.ts";
-import { jsonResult, textResult, type ToolResult } from "../respond.ts";
-import { loadLatestFinancials, loadMarkdown, loadRecord, resolveCompany } from "../records.ts";
-import { READ_ONLY, RECORD, TICKER, guard, resolveRecordArg } from "./shared.ts";
+import { jsonResult } from "../respond.ts";
+import { loadLatestFinancials, loadRecord, resolveCompany } from "../records.ts";
+import { EVENT_TOPIC_NAMES, NARRATIVE_TOPIC_NAMES, eventsTool, narrativeTool } from "./documents.ts";
+import { READ_ONLY, RECORD, TICKER, UNITS_NOTE, guard, resolveRecordArg } from "./shared.ts";
 
 /**
  * The main six tools: a company's whole record, or any section of it, in one call. The
  * optional `record` argument reads an earlier published record instead of the latest one.
  */
-
-/**
- * Shared body for get_narrative and get_events. They differ only in their default:
- * narrative averages 38KB with stable, meaningful section names, so returning an
- * index first is the largest token saving in the tool set. Events averages 12KB
- * with one-off headings, where the content is worth more than an index of it.
- */
-async function markdownTool(
-  ticker: string,
-  section: string | undefined,
-  file: "narrative" | "events",
-  indexByDefault: boolean,
-  record: string | undefined,
-): Promise<ToolResult> {
-  const c = await resolveCompany(ticker);
-  const { md, url, tag } = await loadMarkdown(c, file, resolveRecordArg(c, record));
-  const wantsAll = section?.trim().toLowerCase() === "all";
-
-  if (!section && indexByDefault) {
-    return jsonResult(
-      {
-        ticker: c.ticker,
-        document: `${file}.md`,
-        record: tag,
-        note:
-          "Section index. Call again with one of these headings for its text, " +
-          "or section='all' for the whole document. The dedicated tools get_business_overview, " +
-          "get_risk_factors, get_annual_mdna, get_current_quarter, get_subsequent_events and " +
-          "get_legal_proceedings return one section each; search_text finds a passage by keyword.",
-        sections: sectionIndex(md),
-      },
-      url,
-    );
-  }
-
-  if (!section || wantsAll) return textResult(md, url);
-
-  const sections = splitSections(md);
-  const hit = findSection(sections, section);
-  if (!hit) {
-    throw new Error(
-      `No section matching "${section}" in ${c.ticker} ${file}.md. ` +
-        `Available sections: ${sections.map((s) => s.heading).join(" | ")}.`,
-    );
-  }
-  return textResult(`## ${hit.heading}\n\n${hit.body}`, url);
-}
-
 export function registerCoreTools(server: McpServer) {
   server.registerTool(
     "list_companies",
     {
       title: "List covered companies",
       description:
-        "List the public companies Ticker Scout covers, with the fiscal period of the latest " +
-        "data, every published record held for each (its periods), and the predicted date of the " +
-        "next SEC filing. Call this first when you do not know whether a company is covered, or " +
-        "to turn a company name into a ticker. Coverage is S&P 500 companies plus major foreign " +
-        "issuers that file with the SEC. For a site-wide summary (how many companies, forms, " +
-        "foreign issuers, upcoming filings) use get_coverage_summary.",
+        "The public companies Ticker Scout covers, with the fiscal period of each one's latest data, " +
+        "every published record held and the predicted date of its next SEC filing, plus a coverage " +
+        "summary (company count, last update, filers by latest form, foreign issuers). Call this first " +
+        "when you do not know whether a company is covered, or to turn a company name into a ticker. " +
+        "Coverage is S&P 500 companies plus major foreign issuers that file with the SEC.",
       inputSchema: z.object({
         query: z
           .string()
@@ -85,10 +36,19 @@ export function registerCoreTools(server: McpServer) {
       guard(async () => {
         const file = await loadTickers();
         const matches = matchCompanies(file.tickers, query);
+        const byForm: Record<string, number> = {};
+        for (const e of file.tickers) byForm[e.latest_form ?? "unknown"] = (byForm[e.latest_form ?? "unknown"] ?? 0) + 1;
         return jsonResult(
           {
             coverage_count: file.ticker_count,
             data_updated: file.updated,
+            coverage: {
+              latest_form_counts: byForm,
+              foreign_issuers: file.tickers.filter((e) => /20-F|40-F|6-K/.test(e.latest_form ?? "")).map((e) => e.ticker),
+              not_covered:
+                "No market prices, quotes or market capitalization; no analyst estimates; no figures " +
+                "that are not in a company's own SEC filings.",
+            },
             matched: matches.length,
             companies: matches.map((e) => {
               const x = e as typeof e & { periods?: string[] };
@@ -116,11 +76,11 @@ export function registerCoreTools(server: McpServer) {
       title: "Company profile and coverage manifest",
       description:
         "Company identity and coverage manifest: name, CIK, exchange, state of incorporation, SIC " +
-        "industry, the fiscal period of the latest data, the SEC filings that record is built from - " +
-        "the annual report and the latest quarterly report, each with its own fiscal year, accession " +
-        "number and EDGAR link - every published record (period) with its permanent URLs, and the " +
-        "predicted next filing. Pass `record` for an earlier record's manifest. The response ends " +
-        "with a map of every other tool, grouped by what it answers.",
+        "industry, the fiscal period of the latest data, the SEC filings that record is built from (the " +
+        "annual report and the latest quarterly report, each with its own fiscal year, filing date, " +
+        "accession number and EDGAR link), every published record with its permanent URLs, and the " +
+        "predicted next filing date and form (a prediction from filing history; a filing date is not an " +
+        "earnings date). Pass `record` for an earlier record's manifest.",
       inputSchema: z.object({ ticker: TICKER, record: RECORD }),
       annotations: READ_ONLY,
     },
@@ -157,14 +117,14 @@ export function registerCoreTools(server: McpServer) {
   server.registerTool(
     "get_key_figures",
     {
-      title: "Headline figures for the latest period",
+      title: "Headline figures and summary for the latest period",
       description:
-        "The headline figures for a company's most recent reported period: revenue, net income, " +
-        "diluted EPS and similar, each with its year-over-year change, the exact dollar amount, " +
-        "and the SEC accession number it came from. Start here for any 'how much did X earn' " +
-        "question. Far smaller than get_financials. Pass `record` for an earlier record's headline. " +
-        "For one figure across every period use the figure tools (get_revenue, get_net_income, " +
-        "get_eps and the rest), and for the written summary and Q&A use get_headline_summary.",
+        "The headline for a company's most recent reported period: revenue, net income, diluted EPS and " +
+        "similar, each with its exact dollar amount, prior-year value, year-over-year change, the record " +
+        "field it was read from and its SEC accession number; plus a one-paragraph written summary and " +
+        "question-and-answer pairs built from those figures. Start here for any 'how did X do' or 'how " +
+        "much did X earn' question. Far smaller than get_financials. Pass `record` for an earlier " +
+        "record's headline. For any other figure, or a figure across periods, use get_figure.",
       inputSchema: z.object({ ticker: TICKER, record: RECORD }),
       annotations: READ_ONLY,
     },
@@ -173,40 +133,43 @@ export function registerCoreTools(server: McpServer) {
         const c = await resolveCompany(ticker);
         const tag = resolveRecordArg(c, record);
         const r = tag ? await loadRecord(c, tag) : await loadLatestFinancials(c);
-        return jsonResult(condenseHeadline(r.doc) as unknown as Record<string, unknown>, r.url);
+        const h = (r.doc.headline ?? {}) as Record<string, unknown>;
+        return jsonResult(
+          {
+            ...(condenseHeadline(r.doc) as unknown as Record<string, unknown>),
+            record: r.tag,
+            summary: h.summary,
+            qa: h.qa,
+          },
+          r.url,
+        );
       }),
   );
 
   server.registerTool(
     "get_financials",
     {
-      title: "Financial statements",
+      title: "Financial statements (the whole record)",
       description:
-        "Income statement, balance sheet and cash flow, already assembled from a company's SEC " +
-        "filings, for up to three annual periods plus the latest quarter, with segment revenue " +
-        "and per-share figures. Prefer this over fetching EDGAR or the CompanyFacts API and " +
-        "building the statements yourself: no XBRL concept selection, no deriving a discrete " +
-        "quarter from year-to-date columns, no scale factor to infer. Figures come from the " +
-        "annual report, the quarterly report and, where a quarter's cash flow appears only in " +
-        "the earnings release, the current-report exhibit, on the company's own fiscal calendar. " +
-        "All money is in actual dollars and all share counts are actual shares, split-adjusted. " +
-        "Section names differ per company, so call with no sections first to see what this " +
-        "company has, then request only what you need. To trace a figure to its source, " +
-        "request the figure_sources section: it mirrors the figures' paths, and each entry " +
-        "joins with figure_sources.documents into a sec.gov link that opens the filing at the " +
-        "line printing that number. It is never included unless requested by name. Pass `record` " +
-        "for an earlier published record. Narrower tools: get_income_statement, get_balance_sheet, " +
-        "get_cash_flow_statement, get_period (one fiscal year or quarter), and one tool per line item.",
+        "Income statement, balance sheet and cash flow, already assembled from a company's SEC filings, " +
+        "for up to three fiscal years plus the latest quarter, year to date and trailing twelve months, " +
+        "with segment tables, per-share figures and the record's own notes. This is the published " +
+        "financials.json, whole or by top-level section. Prefer it over fetching EDGAR or the " +
+        "CompanyFacts API: no XBRL concept selection, no deriving a discrete quarter from year-to-date " +
+        "columns, no scale factor to infer. Section names differ per company, so call with no sections " +
+        "first (or read available_sections) and then request only what you need. Request the " +
+        "figure_sources section by name for a sec.gov link to the line of the filing that prints each " +
+        `figure; a whole-file call leaves it out. ${UNITS_NOTE} For one statement or one period, ` +
+        "searching older records too, use get_statements; for one figure, get_figure.",
       inputSchema: z.object({
         ticker: TICKER,
         sections: z
           .array(z.string())
           .optional()
           .describe(
-            "Top-level sections to return, for example annual, quarterly, " +
-              "trailing_twelve_months, notes, uncertainties, figure_sources. Omit for the " +
-              "whole file, which leaves out figure_sources. " +
-              "An unknown name returns the valid list for that company.",
+            "Top-level sections to return, for example annual, quarterly, trailing_twelve_months, notes, " +
+              "uncertainties, figure_sources. Omit for the whole file (without figure_sources). An unknown " +
+              "name returns the valid list for that company.",
           ),
         record: RECORD,
       }),
@@ -229,28 +192,29 @@ export function registerCoreTools(server: McpServer) {
     {
       title: "10-K and 10-Q narrative",
       description:
-        "Qualitative synthesis of a company's latest annual and quarterly reports, condensed from " +
-        "the filings themselves rather than from news: business description, risk " +
-        "factors with quarter-over-quarter changes flagged, MD&A, legal proceedings and " +
-        "subsequent events. Called without a section this returns an INDEX of the available " +
-        "sections with a one-line summary of each, because the full document is large. Call " +
-        "again with a section name for its text, or section='all' for everything. Pass `record` " +
-        "for the narrative as of an earlier published record.",
+        "Qualitative synthesis of a company's latest annual and quarterly reports, condensed from the " +
+        "filings themselves rather than from news: business description, risk factors with changes since " +
+        "the prior filing flagged, annual MD&A, the current quarter, legal proceedings and subsequent " +
+        "events. Called without `section` it returns an INDEX: every section with its size, first " +
+        "sentence and subsection headings, because the full document is large. Then pass `section` as " +
+        `a heading or subsection heading from the index, or as a topic (${NARRATIVE_TOPIC_NAMES}), which ` +
+        "finds the matching sections whatever this company calls them ('legal' also pulls legal items " +
+        "from the 8-K digest), or 'all' for everything. Pass `record` for the narrative as of an earlier " +
+        "record. To find a keyword anywhere, use search_text.",
       inputSchema: z.object({
         ticker: TICKER,
         section: z
           .string()
           .optional()
           .describe(
-            "Section name, matched case-insensitively on a prefix, for example 'risk'. " +
-              "Use 'all' for the complete document. Omit for the section index.",
+            `A heading or subsection heading (case-insensitive; a unique prefix is enough), a topic ` +
+              `(${NARRATIVE_TOPIC_NAMES}), or 'all'. Omit for the index.`,
           ),
         record: RECORD,
       }),
       annotations: READ_ONLY,
     },
-    async ({ ticker, section, record }) =>
-      guard(() => markdownTool(ticker, section, "narrative", true, record)),
+    async ({ ticker, section, record }) => guard(() => narrativeTool(ticker, section, record)),
   );
 
   server.registerTool(
@@ -258,72 +222,59 @@ export function registerCoreTools(server: McpServer) {
     {
       title: "8-K filings and material events",
       description:
-        "Digest of a company's material current reports (Form 8-K; 6-K for a foreign issuer) over " +
-        "roughly the trailing five quarters, read from the filings and their exhibits: " +
-        "earnings releases, management changes, capital returns, debt offerings and governance " +
-        "actions, each citing its SEC accession number. Returns the full digest by default; it " +
-        "is short. Pass a section to narrow it, or `record` for the digest as of an earlier " +
-        "record. Topic tools (get_earnings_releases, get_management_changes, get_capital_return_events, " +
-        "get_debt_and_financing_events, get_mergers_and_acquisitions, get_governance_events, " +
-        "get_restructuring_events) pull one kind of event.",
+        "Digest of a company's material current reports (Form 8-K; 6-K for a foreign issuer) over roughly " +
+        "the trailing five quarters, read from the filings and their exhibits: earnings releases and " +
+        "guidance, management and board changes, dividends and buybacks announced, debt offerings and " +
+        "credit facilities, mergers and acquisitions, shareholder votes, restructuring and legal matters, " +
+        "each dated and citing its SEC accession number. Returns the full digest by default; it is " +
+        `short. Pass \`section\` as a heading or a topic (${EVENT_TOPIC_NAMES}) to narrow it, or ` +
+        "index=true for a one-line, dated index of every item. Pass `record` for the digest as of an " +
+        "earlier record.",
       inputSchema: z.object({
         ticker: TICKER,
         section: z
           .string()
           .optional()
-          .describe("Optional section name, matched case-insensitively on a prefix."),
+          .describe(`A heading (case-insensitive; a unique prefix is enough) or a topic: ${EVENT_TOPIC_NAMES}.`),
+        index: z.boolean().optional().describe("True for a dated one-line index of every item instead of the full text."),
         record: RECORD,
       }),
       annotations: READ_ONLY,
     },
-    async ({ ticker, section, record }) =>
-      guard(() => markdownTool(ticker, section, "events", false, record)),
+    async ({ ticker, section, index, record }) => guard(() => eventsTool(ticker, section, index, record)),
   );
 }
 
 /** What get_company and guide hand an agent: every tool, grouped by the question it answers. */
 export const TOOL_MAP: Record<string, string[]> = {
   "start here": [
-    "guide: how the tools fit together, the period syntax, units",
-    "list_companies, get_company, get_coverage_summary",
-    "get_key_figures: headline figures for the latest period",
+    "guide: how the tools fit together, the period syntax, units, the standard figures",
+    "list_companies: coverage, and a company name to a ticker",
+    "get_company: identity, source filings, records held, next filing",
+    "get_key_figures: headline figures, summary and Q&A for the latest period",
   ],
-  "periods and history": [
-    "list_periods: every fiscal year, quarter and published record held",
-    "get_period: every statement for one fiscal year or quarter",
-    "get_trailing_twelve_months, get_year_to_date",
-    "get_figure_history: one figure across every period held",
+  "financial statements": [
+    "get_financials: the whole published record, or any top-level section of it",
+    "get_statements: income statement, balance sheet or cash flow for any period, including TTM and YTD",
+    "list_periods: every fiscal year and quarter held, with dates and sources",
+    "get_segments: segment results, revenue by product, revenue by geography",
+    "get_company_metrics: KPIs, non-GAAP measures, bank and insurance metrics",
+    "get_margins_and_ratios: margins, working capital and current ratio, with formulas",
   ],
-  statements: [
-    "get_financials (whole file, sliceable)",
-    "get_income_statement, get_balance_sheet, get_cash_flow_statement",
-    "get_segments, get_revenue_breakdown, get_geographic_revenue",
-    "get_non_gaap_measures, get_operating_metrics, get_bank_metrics, get_insurance_metrics, get_margins",
+  figures: [
+    "get_figure: any figure by standard name or the record's own name, for any period or the full history",
+    "list_company_figures: every figure a company reports under its own names, or a search of them",
+    "compare_companies: one standard figure across two to ten companies",
   ],
-  "one line item, every period": [
-    "income: get_revenue, get_cost_of_revenue, get_gross_profit, get_research_and_development, get_sga_expense, get_operating_expenses, get_operating_income, get_interest_expense, get_pretax_income, get_income_tax, get_net_income, get_eps, get_share_count, get_depreciation_and_amortization, get_stock_based_compensation",
-    "banks: get_net_interest_income, get_credit_loss_provision",
-    "balance sheet: get_cash, get_total_assets, get_total_liabilities, get_debt, get_shareholders_equity, get_working_capital, get_goodwill_and_intangibles, get_inventories, get_accounts_receivable, get_accounts_payable, get_property_and_equipment",
-    "cash flow: get_operating_cash_flow, get_capital_expenditures, get_free_cash_flow, get_investing_and_financing_cash_flow, get_dividends, get_share_repurchases, get_acquisitions",
-    "equity: get_retained_earnings",
+  "filings and sources": [
+    "get_filings: every SEC accession cited, or everything about one filing",
+    "get_reporting_conventions: units, currency and exchange rates, ADR ratio, splits, fiscal calendar",
+    "get_data_notes: the record's sourcing notes and what the filings do not disclose",
+    "list_upcoming_filings: which companies file next",
   ],
-  "any figure": [
-    "list_standard_figures, list_company_figures, find_figures, get_figure, compare_companies",
+  "filings text": [
+    "get_narrative: business, risk factors, MD&A, current quarter, legal, subsequent events",
+    "get_events: 8-K earnings, management changes, capital returns, financing, M&A and more",
+    "search_text: the passages that mention a keyword",
   ],
-  "sources and filings": [
-    "get_source_filings, get_accession_numbers, get_filing, get_figure_source",
-  ],
-  "units, currency and conventions": [
-    "get_reporting_conventions, get_fiscal_calendar, get_currency_conversion, get_adr_details, get_stock_splits, get_data_notes, get_data_gaps, get_headline_summary",
-  ],
-  "filing schedule": ["get_next_filing, list_upcoming_filings"],
-  "10-K and 10-Q narrative": [
-    "get_narrative (index or any section), get_narrative_outline, get_narrative_subsection",
-    "get_business_overview, get_risk_factors, get_annual_mdna, get_current_quarter, get_subsequent_events, get_legal_proceedings",
-  ],
-  "8-K events": [
-    "get_events (whole digest), list_events",
-    "get_earnings_releases, get_management_changes, get_capital_return_events, get_debt_and_financing_events, get_mergers_and_acquisitions, get_governance_events, get_restructuring_events",
-  ],
-  search: ["search_sections: which sections discuss a keyword", "search_text: the passages that say it"],
 };

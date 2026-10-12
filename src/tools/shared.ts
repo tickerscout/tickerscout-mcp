@@ -110,6 +110,6 @@ export function resolveRecordArg(c: Company, input: string | undefined): string 
       : `${c.ticker} has no published record for "${raw}". `) +
       `Records held: ${tags.join(", ")}. Each record is the snapshot built when one 10-Q or 10-K ` +
       `was filed, and holds several fiscal periods inside it; to ask for a fiscal year or quarter ` +
-      `inside the statements, use get_period or a figure tool's period argument.`,
+      `inside the statements, use the period argument of get_statements or get_figure.`,
   );
 }

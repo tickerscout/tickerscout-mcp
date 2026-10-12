@@ -56,7 +56,7 @@ const tools = await call("tools/list", {});
 const names = (tools.result?.tools ?? []).map((t) => t.name);
 const CORE = ["list_companies", "get_company", "get_key_figures", "get_financials", "get_narrative", "get_events"];
 check("the main six tools are listed first", CORE.every((n, i) => names[i] === n), names.slice(0, 6).join(","));
-check("the full tool set is listed", names.length >= 90, String(names.length));
+check("the full tool set is listed", names.length === 20, String(names.length));
 
 const list = await callTool("list_companies", {});
 check("list_companies returns coverage", !list.isError && list.body.includes("coverage_count"));
@@ -99,37 +99,59 @@ for (const t of TICKERS) {
   check("get_events returns full text", !ev.isError && ev.body.includes("Source:"));
 }
 
-console.log("\nTools added in 2.0");
+console.log("\nArguments that replaced the 2.0 single-purpose tools");
 
-const rev = await callTool("get_revenue", { ticker: "NVDA" });
-check("get_revenue names the record's field", !rev.isError && rev.body.includes('"name_in_record"') && rev.body.includes("sec.gov"));
+const rev = await callTool("get_figure", { ticker: "NVDA", figure: "revenue" });
+check("get_figure names the record's field", !rev.isError && rev.body.includes('"name_in_record"') && rev.body.includes("sec.gov"));
+check("a generic name resolves the standard way", rev.body.includes('"matched_as": "standard figure"'));
 
-const aapl = await callTool("get_revenue", { ticker: "AAPL", period: "latest annual" });
+const aapl = await callTool("get_figure", { ticker: "AAPL", figure: "revenue", period: "latest annual" });
 check("AAPL revenue is reported as total_net_sales", aapl.body.includes('"total_net_sales"'));
 
 const exact = await callTool("get_figure", { ticker: "AAPL", figure: "total_net_sales" });
 check("get_figure answers a record name exactly", !exact.isError && exact.body.includes("exact name in the record"));
 
+const several = await callTool("get_figure", { ticker: "MSFT", figure: ["revenue", "net income", "eps"] });
+check("get_figure takes several figures in one call", !several.isError && (JSON.parse(several.body).results ?? []).length === 3);
+
+const hist = await callTool("get_figure", { ticker: "NVDA", figure: "net income", period: "all" });
+check("period='all' returns a history", !hist.isError && hist.body.includes('"history"') && hist.body.includes('"quarterly"'));
+
 const periods = await callTool("list_periods", { ticker: "NVDA" });
 check("list_periods returns fiscal years and quarters", !periods.isError && periods.body.includes('"quarters"'));
 
-const old = await callTool("get_period", { ticker: "NVDA", period: "FY2015" });
+const old = await callTool("get_statements", { ticker: "NVDA", period: "FY2015" });
 check("a period before the data says so", !old.isError && old.body.includes("going back that far"));
 
-const older = await callTool("get_net_income", { ticker: "NVDA", period: "Q1 FY2027" });
+const older = await callTool("get_statements", { ticker: "NVDA", statement: "income_statement", period: "Q1 FY2027" });
 check("a quarter only an older record holds is found", !older.isError && older.body.includes("Q1 FY2027"));
 
-const fx = await callTool("get_currency_conversion", { ticker: "TSM" });
-check("get_currency_conversion returns rates for a foreign issuer", !fx.isError && fx.body.includes("twd_per_usd"));
+const ttm = await callTool("get_statements", { ticker: "AAPL", period: "ttm" });
+check("get_statements returns the TTM block", !ttm.isError && ttm.body.includes("trailing_twelve_months"));
 
-const acc = await callTool("get_accession_numbers", { ticker: "JPM" });
-check("get_accession_numbers lists accessions", !acc.isError && acc.body.includes("edgar_index_url"));
+const seg = await callTool("get_segments", { ticker: "NVDA", breakdown: "revenue_by_product" });
+check("get_segments returns a revenue breakdown", !seg.isError && seg.body.includes("Data Center"));
 
-const risk = await callTool("get_risk_factors", { ticker: "BRK-B" });
-check("get_risk_factors returns the section", !risk.isError && risk.body.includes("Risk"));
+const bank = await callTool("get_company_metrics", { ticker: "JPM", kind: "bank" });
+check("get_company_metrics returns bank metrics", !bank.isError && bank.body.includes("cet1"));
+
+const fx = await callTool("get_reporting_conventions", { ticker: "TSM" });
+check("get_reporting_conventions returns rates for a foreign issuer", !fx.isError && fx.body.includes("twd_per_usd"));
+
+const acc = await callTool("get_filings", { ticker: "JPM" });
+check("get_filings lists accessions", !acc.isError && acc.body.includes("edgar_index_url"));
+
+const risk = await callTool("get_narrative", { ticker: "BRK-B", section: "risk factors" });
+check("get_narrative finds a topic by name", !risk.isError && risk.body.includes("Risk"));
+
+const earn = await callTool("get_events", { ticker: "NVDA", section: "earnings" });
+check("get_events finds a topic by name", !earn.isError && earn.body.includes("Source:"));
+
+const evIndex = await callTool("get_events", { ticker: "NVDA", index: true });
+check("get_events index lists dated items", !evIndex.isError && evIndex.body.includes('"accessions"'));
 
 const search = await callTool("search_text", { ticker: "NVDA", query: "export" });
-check("search_text finds passages", !search.isError && search.body.includes('"passages"'));
+check("search_text finds passages", !search.isError && search.body.includes('"passages"') && search.body.includes('"sections_ranked"'));
 
 const cmp = await callTool("compare_companies", { tickers: ["NVDA", "JPM", "WMT"], figure: "net income" });
 check("compare_companies returns a row per company", !cmp.isError && ["NVDA", "JPM", "WMT"].every((t) => cmp.body.includes(`"${t}"`)));

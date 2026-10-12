@@ -68,6 +68,8 @@ export interface CondensedMetric {
   yoy?: string;
   accession?: string;
   period_label?: string;
+  /** The record field the figure was read from, e.g. "quarterly[0].income_statement.revenue". */
+  field?: string;
 }
 
 export interface CondensedHeadline {
@@ -110,6 +112,10 @@ export function condenseHeadline(doc: FinancialsDoc): CondensedHeadline {
         yoy: m.yoy as string | undefined,
         accession: src.source_accession as string | undefined,
         period_label: src.period_label as string | undefined,
+        field:
+          src.array && src.field
+            ? `${String(src.array)}${src.index === undefined || src.index === null ? "" : `[${String(src.index)}]`}.${String(src.field)}`
+            : (src.field as string | undefined),
       };
     }),
   };

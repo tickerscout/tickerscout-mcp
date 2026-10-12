@@ -6,7 +6,7 @@ import { registerFigureTools } from "./tools/figures.ts";
 import { registerReferenceTools } from "./tools/reference.ts";
 import { registerDocumentTools } from "./tools/documents.ts";
 
-export const SERVER_VERSION = "2.0.0";
+export const SERVER_VERSION = "3.0.0";
 
 type ToolDefinition = [name: string, config: unknown, handler: unknown];
 
@@ -15,7 +15,7 @@ let definitions: ToolDefinition[] | null = null;
 /**
  * Every tool's name, config and handler, built ONCE per isolate.
  *
- * createMcpHandler calls createServer for every request. Building ~100 tool configs (each
+ * createMcpHandler calls createServer for every request. Building the tool configs (each
  * with its zod input schema) per request doubled the CPU a request costs: measured median
  * 1.76 ms for a ping with fresh configs against 0.88 ms with shared ones, and the Workers
  * free plan allows 10 ms of CPU per request. Handlers close over nothing per-request, so
@@ -32,16 +32,15 @@ function toolDefinitions(): ToolDefinition[] {
   registerCoreTools(collector);
   registerStatementTools(collector);
   registerFigureTools(collector);
-  registerReferenceTools(collector);
   registerDocumentTools(collector);
+  registerReferenceTools(collector);
   definitions = collected;
   return collected;
 }
 
 /**
- * Registration order is the order clients list the tools in: the main six tools
- * first, then periods and statements, one tool per line item, sources and conventions,
- * and the narrative, events and search tools last.
+ * Registration order is the order clients list the tools in: the main six tools first,
+ * then statements and periods, figures, search, and filings, conventions and the guide.
  *
  * Kept out of index.ts because a Worker's entry module may export only handlers.
  */

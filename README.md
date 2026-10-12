@@ -1,6 +1,6 @@
 # Ticker Scout MCP server
 
-An agent-native data layer for SEC filings, over the Model Context Protocol. Finished financial statements for public companies, and the filings themselves read and synthesized. The SEC publishes the numbers as data, but it does not publish them as statements. This serves them already assembled, through 97 tools: every statement, every standard line item, every company-specific figure under the name its record uses, every fiscal year and quarter held, every accession number cited, and the 10-K, 10-Q and 8-K narrative by section or by keyword. No API key, no signup, no paywall.
+An agent-native data layer for SEC filings, over the Model Context Protocol. Finished financial statements for public companies, and the filings themselves read and synthesized. The SEC publishes the numbers as data, but it does not publish them as statements. This serves them already assembled, through 20 tools: any statement for any fiscal year or quarter, any line item by its standard name or the company's own, every fiscal year and quarter held, every accession number cited, and the 10-K, 10-Q and 8-K narrative by section, topic or keyword. No API key, no signup, no paywall.
 
 ```
 https://mcp.tickerscout.ai/mcp
@@ -59,24 +59,26 @@ Settings, then Connectors, then Add custom connector, and paste the URL.
 
 ## Start here
 
-The main six tools answer most questions in one call. The other 91 go straight to one thing.
+The main six tools answer most questions in one call; the other fourteen each answer one kind of question, and take arguments rather than multiplying into near-duplicates.
 
 | Question | Call |
 | --- | --- |
 | Is a company covered? What is its ticker? | `list_companies(query)` |
-| How much did it earn last quarter? | `get_key_figures(ticker)` |
-| Revenue (or any line item) across every period held | `get_revenue(ticker)`, `get_net_income(ticker)`, ... |
-| One specific year or quarter | `get_period(ticker, "FY2025")`, or any figure tool with `period` |
+| How did it do last quarter? | `get_key_figures(ticker)` |
+| Any line item, one or several at once | `get_figure(ticker, "revenue")`, `get_figure(ticker, ["revenue", "net income", "eps"])` |
+| A figure's full history | `get_figure(ticker, "free cash flow", period: "all")` |
+| A statement for one year, quarter, TTM or YTD | `get_statements(ticker, statement: "income_statement", period: "FY2025")` |
 | How far back does the data go? | `list_periods(ticker)` |
-| Every figure this company reports, by its own names | `list_company_figures(ticker)` |
-| A company-specific metric | `find_figures(ticker, "data center")`, then `get_figure` |
+| Segments, products, geography | `get_segments(ticker, breakdown?)` |
+| KPIs, non-GAAP, bank or insurance metrics | `get_company_metrics(ticker, kind?)` |
+| Margins | `get_margins_and_ratios(ticker)` |
+| A company-specific metric | `list_company_figures(ticker, query: "data center")`, then `get_figure` |
 | Compare companies | `compare_companies(["NVDA","AMD","AVGO"], "revenue")` |
-| Segments, products, geography | `get_segments`, `get_revenue_breakdown`, `get_geographic_revenue` |
-| Risks, strategy, management's discussion | `get_risk_factors`, `get_business_overview`, `get_annual_mdna`, `get_current_quarter` |
-| What did the company announce? | `list_events`, `get_earnings_releases`, `get_management_changes`, ... |
-| Find a topic anywhere in the filings | `search_sections(ticker, query)`, `search_text(ticker, query)` |
-| Which filing did a number come from? | `get_figure_source`, `get_accession_numbers`, `get_filing` |
-| Currency, ADR ratio, fiscal calendar, splits | `get_currency_conversion`, `get_adr_details`, `get_fiscal_calendar`, `get_stock_splits` |
+| Risks, strategy, management's discussion | `get_narrative(ticker, section: "risk factors")` (or `business`, `md&a`, `current quarter`, `legal`, `subsequent events`) |
+| What did the company announce? | `get_events(ticker)`, or `section: "earnings"`, `"m&a"`, `"management changes"`, ... |
+| Find a topic anywhere in the filings | `search_text(ticker, query)` |
+| Which filing did a number come from? | `get_figure` (a `sec_link` on every tagged value), `get_filings(ticker, accession?)` |
+| Currency, ADR ratio, splits, fiscal calendar | `get_reporting_conventions(ticker)` |
 | Not sure? | `guide()` |
 
 Tickers are case-insensitive, and `BRK.B` and `BRK-B` both resolve.
@@ -109,178 +111,104 @@ A period earlier than anything held is not an error. The answer says the data do
 Records are shaped to each business, so the same line item has different names: Apple's revenue is `total_net_sales`, JPMorgan's is `total_net_revenue`, Walmart's net income is `net_income_attributable_to_walmart`. Nothing is relabeled to hide that.
 
 - Every value a figure tool returns leads with `name_in_record` (the record's own name), `field` (its path inside the period) and `json_path` (its exact address in `financials.json`, e.g. `annual[0].income_statement.total_net_sales`).
-- Any of those names can be passed back to `get_figure` or `get_figure_history` exactly as written, and returns exactly that field. Case, spaces and underscores do not matter: `Data Center` and `revenue_by_market_platform.Data Center` both work.
-- `list_company_figures` maps each standard figure to the name this company uses, then lists every remaining figure under its own name.
+- Any of those names can be passed back to `get_figure` exactly as written, and returns exactly that field. Case, spaces and underscores do not matter: `Data Center` and `revenue_by_market_platform.Data Center` both work.
+- A standard figure asked for by its generic words (`revenue`, `net income`, `free cash flow`) resolves the standard way below, each value still under the record's own name. If the record also has other fields of that name (NVIDIA's segment tables each carry a `revenue`), they are listed under `other_fields_with_this_name`, callable by path.
+- `list_company_figures` maps each standard figure to the name this company uses, then lists every remaining figure under its own name. Pass `query` to search those names.
 
 ### Standard figures
 
-Each line-item tool knows the names a figure goes by across companies and resolves deterministically: first the field the company's own headline uses for it, then a list of known names in order, then a name pattern only when exactly one field matches. Nothing is estimated, derived or summed to fill a gap. Look-alike fields in the same statement come back under `related`, and a company that reports none of the names gets a plain "not reported" with the closest fields it does have.
+`get_figure` and `compare_companies` know the names each figure goes by across companies and resolve deterministically: first the field the company's own headline uses for it, then a list of known names in order, then a name pattern only when exactly one field matches. Nothing is estimated, derived or summed to fill a gap. Look-alike fields in the same statement come back under `related`, and a company that reports none of the names gets a plain "not reported" with the closest fields it does have.
 
-| Figure | Tool | Read from, for example |
+| Figure | Ask for it as | Read from, for example |
 | --- | --- | --- |
-| Revenue | `get_revenue` | `revenue`, `revenues`, `total_revenues`, `total_revenue`, +19 more |
-| Cost of revenue | `get_cost_of_revenue` | `cost_of_revenue`, `cost_of_sales`, `total_cost_of_revenue`, `cost_of_goods_sold`, +10 more |
-| Gross profit, gross margin % | `get_gross_profit` | `gross_profit`, `gross_margin`, `gross_margin_pct`, +3 more |
-| Research and development | `get_research_and_development` | `research_and_development`, `research_and_development_expenses`, +7 more |
-| Selling, general and administrative | `get_sga_expense` | `selling_general_and_administrative`, `sales_general_and_administrative`, +7 more |
-| Total operating expenses | `get_operating_expenses` | `total_operating_expenses`, `total_costs_and_expenses`, `total_noninterest_expense`, +11 more |
-| Operating income | `get_operating_income` | `operating_income`, `income_from_operations`, `operating_profit`, +4 more |
-| Interest expense | `get_interest_expense` | `interest_expense`, `total_interest_expense`, `interest_expense_net`, `interest_and_debt_expense` |
-| Income before income taxes | `get_pretax_income` | `income_before_income_taxes`, `earnings_before_income_taxes`, +23 more |
-| Income tax, effective tax rate | `get_income_tax` | `provision_for_income_taxes`, `income_tax_expense`, `effective_tax_rate_pct`, +17 more |
-| Net income | `get_net_income` | `net_income`, `net_earnings`, `net_income_attributable_to_<company>`, +8 more |
-| Diluted and basic EPS | `get_eps` | `diluted_eps`, `eps_diluted`, `basic_eps`, +11 more |
-| Diluted, basic and outstanding shares | `get_share_count` | `diluted_shares`, `basic_shares`, `shares_outstanding`, +27 more |
-| Depreciation and amortization | `get_depreciation_and_amortization` | `depreciation_and_amortization`, `depreciation_depletion_and_amortization`, +7 more |
-| Stock-based compensation | `get_stock_based_compensation` | `stock_based_compensation`, `share_based_compensation`, +4 more |
-| Net interest income, noninterest income (banks) | `get_net_interest_income` | `net_interest_income`, `total_noninterest_income`, +7 more |
-| Provision for credit losses (banks) | `get_credit_loss_provision` | `provision_for_credit_losses`, `provision_for_loan_losses`, +4 more |
-| Cash and cash equivalents | `get_cash` | `cash_and_cash_equivalents`, `cash_and_equivalents`, `cash_and_due_from_banks`, +5 more |
-| Total assets | `get_total_assets` | `total_assets`, `assets.total_assets` |
-| Total liabilities | `get_total_liabilities` | `total_liabilities`, `liabilities.total_liabilities` |
-| Total, long-term and short-term debt | `get_debt` | `total_debt`, `long_term_debt`, `short_term_debt`, `current_portion_of_long_term_debt`, +32 more |
-| Shareholders' equity | `get_shareholders_equity` | `total_stockholders_equity`, `total_shareholders_equity`, `total_<company>_shareholders_equity`, `total_equity`, +7 more |
-| Current assets and liabilities, working capital | `get_working_capital` | `total_current_assets`, `total_current_liabilities` |
-| Goodwill and intangibles | `get_goodwill_and_intangibles` | `goodwill`, `intangible_assets_net`, `other_intangible_assets_net`, +11 more |
-| Inventories | `get_inventories` | `inventories`, `inventory`, `merchandise_inventories`, +4 more |
-| Accounts receivable | `get_accounts_receivable` | `accounts_receivable_net`, `receivables_net`, `trade_receivables_net`, +7 more |
-| Accounts payable | `get_accounts_payable` | `accounts_payable`, `trade_accounts_payable`, `trade_payables`, +3 more |
-| Property, plant and equipment | `get_property_and_equipment` | `property_plant_and_equipment_net`, `property_and_equipment_net`, +7 more |
-| Retained earnings | `get_retained_earnings` | `retained_earnings`, `accumulated_deficit`, +3 more |
-| Operating cash flow | `get_operating_cash_flow` | `operating_cash_flow`, `net_cash_provided_by_operating_activities`, +10 more |
-| Capital expenditures | `get_capital_expenditures` | `capex`, `capital_expenditures`, `purchases_of_property_and_equipment`, +10 more |
-| Free cash flow | `get_free_cash_flow` | `free_cash_flow`, `free_cash_flow_for_the_quarter`, +2 more |
-| Investing and financing cash flow | `get_investing_and_financing_cash_flow` | `investing_cash_flow`, `financing_cash_flow`, `net_cash_used_in_investing_activities`, +21 more |
-| Dividends paid, dividends per share | `get_dividends` | `dividends_paid`, `cash_dividends_paid`, `dividends_per_share`, `dividends_declared_per_share`, +14 more |
-| Share repurchases | `get_share_repurchases` | `share_repurchases`, `repurchases_of_common_stock`, `purchases_of_treasury_stock`, +11 more |
-| Acquisitions, net of cash acquired | `get_acquisitions` | `acquisitions_net_of_cash_acquired`, +7 more |
+| Revenue | `revenue`, `sales` | `revenue`, `revenues`, `total_revenues`, `total_revenue`, +19 more |
+| Cost of revenue | `cost of revenue`, `cogs` | `cost_of_revenue`, `cost_of_sales`, `total_cost_of_revenue`, `cost_of_goods_sold`, +10 more |
+| Gross profit, gross margin % | `gross profit`, `gross margin` | `gross_profit`, `gross_margin`, `gross_margin_pct`, +3 more |
+| Research and development | `r&d` | `research_and_development`, `research_and_development_expenses`, +7 more |
+| Selling, general and administrative | `sga` | `selling_general_and_administrative`, `sales_general_and_administrative`, +7 more |
+| Total operating expenses | `operating expenses`, `opex` | `total_operating_expenses`, `total_costs_and_expenses`, `total_noninterest_expense`, +11 more |
+| Operating income | `operating income`, `ebit` | `operating_income`, `income_from_operations`, `operating_profit`, +4 more |
+| Interest expense | `interest expense` | `interest_expense`, `total_interest_expense`, `interest_expense_net`, `interest_and_debt_expense` |
+| Income before income taxes | `pretax income` | `income_before_income_taxes`, `earnings_before_income_taxes`, +23 more |
+| Income tax, effective tax rate | `income tax`, `effective tax rate` | `provision_for_income_taxes`, `income_tax_expense`, `effective_tax_rate_pct`, +17 more |
+| Net income | `net income`, `earnings` | `net_income`, `net_earnings`, `net_income_attributable_to_<company>`, +8 more |
+| Diluted and basic EPS | `eps`, `basic eps` | `diluted_eps`, `eps_diluted`, `basic_eps`, +11 more |
+| Diluted, basic and outstanding shares | `diluted shares`, `basic shares`, `shares outstanding` | `diluted_shares`, `basic_shares`, `shares_outstanding`, +27 more |
+| Depreciation and amortization | `d&a` | `depreciation_and_amortization`, `depreciation_depletion_and_amortization`, +7 more |
+| Stock-based compensation | `sbc` | `stock_based_compensation`, `share_based_compensation`, +4 more |
+| Net interest income, noninterest income (banks) | `net interest income`, `noninterest income` | `net_interest_income`, `total_noninterest_income`, +7 more |
+| Provision for credit losses (banks) | `provision for credit losses` | `provision_for_credit_losses`, `provision_for_loan_losses`, +4 more |
+| Cash and cash equivalents | `cash` | `cash_and_cash_equivalents`, `cash_and_equivalents`, `cash_and_due_from_banks`, +5 more |
+| Total assets | `total assets` | `total_assets`, `assets.total_assets` |
+| Total liabilities | `total liabilities` | `total_liabilities`, `liabilities.total_liabilities` |
+| Total, long-term and short-term debt | `debt`, `long-term debt`, `short-term debt` | `total_debt`, `long_term_debt`, `short_term_debt`, `current_portion_of_long_term_debt`, +32 more |
+| Shareholders' equity | `equity`, `book value` | `total_stockholders_equity`, `total_shareholders_equity`, `total_<company>_shareholders_equity`, `total_equity`, +7 more |
+| Current assets and liabilities, working capital | `current assets`, `current liabilities` (working capital: `get_margins_and_ratios`) | `total_current_assets`, `total_current_liabilities` |
+| Goodwill and intangibles | `goodwill`, `intangibles` | `goodwill`, `intangible_assets_net`, `other_intangible_assets_net`, +11 more |
+| Inventories | `inventory` | `inventories`, `inventory`, `merchandise_inventories`, +4 more |
+| Accounts receivable | `receivables` | `accounts_receivable_net`, `receivables_net`, `trade_receivables_net`, +7 more |
+| Accounts payable | `payables` | `accounts_payable`, `trade_accounts_payable`, `trade_payables`, +3 more |
+| Property, plant and equipment | `pp&e` | `property_plant_and_equipment_net`, `property_and_equipment_net`, +7 more |
+| Retained earnings | `retained earnings` | `retained_earnings`, `accumulated_deficit`, +3 more |
+| Operating cash flow | `operating cash flow`, `cfo` | `operating_cash_flow`, `net_cash_provided_by_operating_activities`, +10 more |
+| Capital expenditures | `capex` | `capex`, `capital_expenditures`, `purchases_of_property_and_equipment`, +10 more |
+| Free cash flow | `free cash flow`, `fcf` | `free_cash_flow`, `free_cash_flow_for_the_quarter`, +2 more |
+| Investing and financing cash flow | `investing cash flow`, `financing cash flow` | `investing_cash_flow`, `financing_cash_flow`, `net_cash_used_in_investing_activities`, +21 more |
+| Dividends paid, dividends per share | `dividends`, `dividends per share` | `dividends_paid`, `cash_dividends_paid`, `dividends_per_share`, `dividends_declared_per_share`, +14 more |
+| Share repurchases | `buybacks` | `share_repurchases`, `repurchases_of_common_stock`, `purchases_of_treasury_stock`, +11 more |
+| Acquisitions, net of cash acquired | `acquisitions` | `acquisitions_net_of_cash_acquired`, +7 more |
 
-`list_standard_figures` returns the full catalog with every name each figure is read from.
+`guide()` returns the full catalog with every word each figure answers to.
 
 ### Units and sources
 
 All money is in actual dollars (not thousands, not millions), per-share figures in dollars per share, share counts in actual shares, split-adjusted. Every figure response carries the record's own units statement, so a value is never separated from its scale.
 
-Every value carries the SEC accession number of the filing it came from and, where the filing tags the number, a `sec_link` that opens the filing at the line printing it. A value with no link was calculated in the record (margins, free cash flow, trailing twelve months, a quarter derived by subtraction) or comes from an earnings release, which the SEC does not tag. Margins this server calculates (`get_margins`, `get_working_capital`) are labeled `calculated` and show their formula and the exact fields used.
+Every value carries the SEC accession number of the filing it came from and, where the filing tags the number, a `sec_link` that opens the filing at the line printing it. A value with no link was calculated in the record (margins, free cash flow, trailing twelve months, a quarter derived by subtraction) or comes from an earnings release, which the SEC does not tag. Margins and ratios this server calculates (`get_margins_and_ratios`) are labeled `calculated` and show their formula and the exact fields used.
 
-## All 97 tools
+## All 20 tools
+
+Every tool is read-only. Tickers are case-insensitive. A `period` argument takes the syntax above and searches every record; a `record` argument reads one earlier snapshot.
 
 ### The main six
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `list_companies` | `query?` | Every covered company with its latest fiscal period, every record held, and its next expected filing. Resolves a company name to a ticker. |
-| `get_company` | `ticker`, `record?` | Identity and coverage manifest: name, CIK, exchange, state of incorporation, SIC industry, the filings the record is built from with accessions and EDGAR links, every published record, the next filing, and a map of every tool. |
-| `get_key_figures` | `ticker`, `record?` | Headline figures for the latest period, each with its year-over-year change, exact amount and source accession. |
+| `list_companies` | `query?` | Every covered company with its latest fiscal period, every record held and its next expected filing, plus a coverage summary. Resolves a company name to a ticker. |
+| `get_company` | `ticker`, `record?` | Identity and coverage manifest: name, CIK, exchange, state of incorporation, SIC industry, the filings the record is built from with accessions and EDGAR links, every published record, the predicted next filing, and a map of every tool. |
+| `get_key_figures` | `ticker`, `record?` | Headline figures for the latest period, each with its year-over-year change, exact amount, record field and source accession, plus the written summary and Q&A. |
 | `get_financials` | `ticker`, `sections?`, `record?` | The whole financial record, sliceable by top-level section. `figure_sources` (the sec.gov link for every tagged figure) only on request. |
-| `get_narrative` | `ticker`, `section?`, `record?` | The 10-K and 10-Q synthesis. A section index by default; any section by name, or `all`. |
-| `get_events` | `ticker`, `section?`, `record?` | The 8-K digest over roughly the trailing five quarters, in full or one section. |
+| `get_narrative` | `ticker`, `section?`, `record?` | The 10-K and 10-Q synthesis. An index of sections and subsections by default; any section or subsection by heading, a topic (`business`, `risk factors`, `md&a`, `current quarter`, `subsequent events`, `legal`), or `all`. |
+| `get_events` | `ticker`, `section?`, `index?`, `record?` | The 8-K digest over roughly the trailing five quarters: in full, one section or topic (`earnings`, `management changes`, `capital returns`, `debt and financing`, `m&a`, `governance`, `restructuring`, `legal`), or a dated one-line index. |
 
-### Periods and history
-
-| Tool | Arguments | Returns |
-| --- | --- | --- |
-| `list_periods` | `ticker` | Every fiscal year and quarter held across every record, with dates, length, source form and accession, which records carry each, and the list of records with their permanent URLs. |
-| `get_period` | `ticker`, `period`, `include_sources?` | Every statement and table held for one fiscal year or quarter, searching older records; plain "not that far back" or "not reported yet" answers outside the range. |
-| `get_trailing_twelve_months` | `ticker`, `record?` | The TTM income statement and cash flow with the derivation note saying how it was built. |
-| `get_year_to_date` | `ticker`, `record?` | The year-to-date block and the prior year's year-to-date comparative. |
-| `get_figure_history` | `ticker`, `figure` | One figure across every period held, oldest first, annual and quarterly series, with the record each value came from. |
-
-### Statements and tables
+### Statements and periods
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `get_income_statement` | `ticker`, `period?` | The income statement in reported order, with per-share blocks. |
-| `get_balance_sheet` | `ticker`, `period?` | The balance sheet at each period end. |
-| `get_cash_flow_statement` | `ticker`, `period?` | The cash flow statement, with free cash flow. |
-| `get_segments` | `ticker`, `period?` | Results by reportable segment as the company reports them. |
-| `get_revenue_breakdown` | `ticker`, `period?` | Revenue by product, service, end market, platform, channel or category. |
-| `get_geographic_revenue` | `ticker`, `period?` | Revenue (and assets or income where reported) by country or region. |
-| `get_non_gaap_measures` | `ticker`, `period?` | Adjusted EPS, adjusted operating income, EBITDA, FFO and other company-defined measures. |
-| `get_operating_metrics` | `ticker`, `period?` | KPIs outside the statements: users, subscribers, bookings, stores, RevPAR, backlog and the like. |
-| `get_bank_metrics` | `ticker`, `period?` | CET1 and capital ratios, net interest margin, efficiency ratio, average balances, credit quality. |
-| `get_insurance_metrics` | `ticker`, `period?` | Premiums, underwriting results, combined ratios, investment income, float, book value. |
-| `get_margins` | `ticker`, `period?` | Every margin and rate the record stores, plus gross, operating, net and FCF margin calculated and labeled. |
+| `list_periods` | `ticker` | Every fiscal year and quarter held across every record, with dates, length, source form and accession, the fiscal year end and 52/53-week detection, and every record with its permanent URLs. |
+| `get_statements` | `ticker`, `statement?`, `period?`, `include_sources?` | The income statement, balance sheet or cash flow (or everything held) for any period, including `ttm` and `ytd`, searching older records; plain "not that far back" or "not reported yet" answers outside the range. |
+| `get_segments` | `ticker`, `breakdown?`, `period?` | Segment results, revenue by product, service or end market, and revenue by geography, as the company reports them. |
+| `get_company_metrics` | `ticker`, `kind?`, `period?` | Operating KPIs, non-GAAP measures, bank metrics (CET1, net interest margin, efficiency ratio) and insurance metrics (premiums, combined ratio, float), in the company's own definitions. |
+| `get_margins_and_ratios` | `ticker`, `period?` | Every margin and rate the record stores, plus gross, operating, net and FCF margin, working capital and current ratio, calculated and labeled with their formulas. |
 
-### One line item, every period
-
-Each takes `ticker` and `period?` and returns the figure for every period (or the one named), each value with its record name, JSON path, dates, accession, form and sec.gov link.
-
-`get_revenue`, `get_cost_of_revenue`, `get_gross_profit`, `get_research_and_development`, `get_sga_expense`, `get_operating_expenses`, `get_operating_income`, `get_interest_expense`, `get_pretax_income`, `get_income_tax`, `get_net_income`, `get_eps`, `get_share_count`, `get_depreciation_and_amortization`, `get_stock_based_compensation`, `get_net_interest_income`, `get_credit_loss_provision`, `get_cash`, `get_total_assets`, `get_total_liabilities`, `get_debt`, `get_shareholders_equity`, `get_working_capital`, `get_goodwill_and_intangibles`, `get_inventories`, `get_accounts_receivable`, `get_accounts_payable`, `get_property_and_equipment`, `get_retained_earnings`, `get_operating_cash_flow`, `get_capital_expenditures`, `get_free_cash_flow`, `get_investing_and_financing_cash_flow`, `get_dividends`, `get_share_repurchases`, `get_acquisitions`
-
-### Any figure
+### Figures
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `list_standard_figures` | none | The standard figure catalog: definitions, units, the tool for each, and every record name each is read from. |
-| `list_company_figures` | `ticker`, `period?`, `block?` | Each standard figure mapped to this company's name for it, then every remaining figure under its own name, with values. |
-| `find_figures` | `ticker`, `query`, `period?` | Fields whose names contain the words, e.g. `cet1`, `comparable sales`, `data center`. |
-| `get_figure` | `ticker`, `figure`, `period?` | Any figure by its record name, path, standard name or words. A record name returns exactly that field. |
+| `get_figure` | `ticker`, `figure` (one or up to ten), `period?` | Any figure by standard name, record name, path or words, for every period, one period, or the full history (`period: "all"`). Every value with its record name, JSON path, dates, accession and sec.gov link. |
+| `list_company_figures` | `ticker`, `query?`, `block?`, `period?` | Each standard figure mapped to this company's name for it, then every remaining figure under its own name, with values; or, with `query`, the fields whose names contain the words. |
 | `compare_companies` | `tickers`, `figure`, `period?` | One standard figure for two to ten companies, each row with its own period, dates and record name. |
 
-### Sources and filings
+### Search, filings and conventions
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `get_source_filings` | `ticker`, `record?` | The annual and quarterly reports the record is built from, which filing each period came from, the sec.gov documents the figure links open, and the published files. |
-| `get_accession_numbers` | `ticker`, `record?` | Every accession cited across statements, narrative and events: form, filing date, EDGAR index URL, and every use. |
-| `get_filing` | `ticker`, `accession`, `record?` | One filing: form, date, links, the periods sourced from it, and the full text of every passage citing it. |
-| `get_figure_source` | `ticker`, `figure`, `period?` | For each period, the accession, form and sec.gov line printing the figure. |
-
-### Units, currency and conventions
-
-| Tool | Arguments | Returns |
-| --- | --- | --- |
-| `get_reporting_conventions` | `ticker`, `record?` | Units, currency, business type and template, fiscal-year convention, sign conventions, accounting basis, definitions. |
-| `get_fiscal_calendar` | `ticker` | Fiscal year end, 52/53-week detection, and every period's exact dates and length. |
-| `get_currency_conversion` | `ticker`, `record?` | Reporting currency and, for a foreign issuer, the policy and each period's average and closing rate with its source. |
-| `get_adr_details` | `ticker`, `record?` | ADR ratio, per-share basis and the ratio recorded on each period. |
-| `get_stock_splits` | `ticker`, `record?` | Splits adjusted for, as-reported pre-split values, and notes about splits. |
-| `get_data_notes` | `ticker`, `record?` | The record's own sourcing notes and period-level notes. |
-| `get_data_gaps` | `ticker`, `record?` | Uncertainties, statements not reported, and which standard figures the latest periods lack. |
-| `get_headline_summary` | `ticker`, `record?` | The written summary and Q&A for the latest period, with each metric's field and accession. |
-
-### Filing schedule and coverage
-
-| Tool | Arguments | Returns |
-| --- | --- | --- |
-| `get_next_filing` | `ticker` | Predicted next filing date and form, with the latest period and filing dates held. |
+| `search_text` | `ticker`, `query`, `documents?`, `limit?`, `record?` | The paragraphs and list items in the narrative, events and record notes that contain every word, in full, plus the sections that mention it most. Quote a phrase to match it exactly. |
+| `get_filings` | `ticker`, `accession?`, `record?` | Every accession cited across statements, narrative and events, with form, filing date, EDGAR links and every use; or one filing in full, with every passage that cites it. |
+| `get_reporting_conventions` | `ticker`, `record?` | Units, reporting currency and each period's exchange rate for a foreign issuer, ADR ratio, splits adjusted for, fiscal year end, accounting basis and the record's own definitions. |
+| `get_data_notes` | `ticker`, `record?` | The record's sourcing notes, its uncertainties, and which standard figures the latest periods lack. |
 | `list_upcoming_filings` | `days?`, `form?` | Every covered company expected to file within N days, soonest first. |
-| `get_coverage_summary` | none | Company count, update date, forms held, foreign issuers, records per company, URL patterns. |
-| `guide` | none | How the tools fit together, the period syntax, units, citations and the full tool map. |
-
-### 10-K and 10-Q narrative
-
-| Tool | Arguments | Returns |
-| --- | --- | --- |
-| `get_business_overview` | `ticker`, `record?` | Item 1, condensed: products, segments, markets, customers, competition, supply chain, regulation. |
-| `get_risk_factors` | `ticker`, `record?` | Item 1A, condensed and grouped, with changes since the prior filing flagged. |
-| `get_annual_mdna` | `ticker`, `record?` | Management's discussion and analysis for the latest fiscal year. |
-| `get_current_quarter` | `ticker`, `record?` | The latest quarterly report's MD&A: results, changes, liquidity, guidance. |
-| `get_subsequent_events` | `ticker`, `record?` | Developments after the latest period end, dated and sourced. |
-| `get_legal_proceedings` | `ticker`, `record?` | Every legal and regulatory section, subsection or passage, plus legal items from the 8-K digest. |
-| `get_narrative_outline` | `ticker`, `record?` | The heading tree of the narrative and events documents. |
-| `get_narrative_subsection` | `ticker`, `heading`, `record?` | One subsection by heading, e.g. Liquidity, Guidance, Competition. |
-
-### 8-K events
-
-| Tool | Arguments | Returns |
-| --- | --- | --- |
-| `list_events` | `ticker`, `record?` | Every item in the events digest with its date, accessions and first sentence. |
-| `get_earnings_releases` | `ticker`, `record?` | Quarterly earnings releases and guidance. |
-| `get_management_changes` | `ticker`, `record?` | Executive and board appointments, departures and successions. |
-| `get_capital_return_events` | `ticker`, `record?` | Dividend declarations, buyback authorizations, accelerated repurchases. |
-| `get_debt_and_financing_events` | `ticker`, `record?` | Notes offerings, credit facilities, term loans, commercial paper. |
-| `get_mergers_and_acquisitions` | `ticker`, `record?` | Acquisitions, mergers, divestitures and spin-offs. |
-| `get_governance_events` | `ticker`, `record?` | Annual meeting votes, bylaw and charter changes. |
-| `get_restructuring_events` | `ticker`, `record?` | Restructuring plans, workforce reductions, impairments. |
-
-### Search
-
-| Tool | Arguments | Returns |
-| --- | --- | --- |
-| `search_sections` | `ticker`, `query`, `documents?`, `record?` | Which sections and subsections mention the query, ranked, with snippets. |
-| `search_text` | `ticker`, `query`, `documents?`, `limit?`, `record?` | The paragraphs and list items that contain every word, in full. Quote a phrase to match it exactly. |
+| `guide` | none | How the tools fit together, the period syntax, units, citations, common questions and the standard figure catalog. |
 
 ## Examples
 
@@ -293,7 +221,7 @@ Each takes `ticker` and `period?` and returns the figure for every period (or th
 ```
 > Apple's revenue for fiscal 2025, and where the 10-K prints it
 
-  get_revenue(ticker: "AAPL", period: "FY2025")
+  get_figure(ticker: "AAPL", figure: "revenue", period: "FY2025")
 
   name_in_record  total_net_sales
   json_path       annual[0].income_statement.total_net_sales
@@ -305,7 +233,7 @@ Each takes `ticker` and `period?` and returns the figure for every period (or th
 ```
 > NVIDIA revenue in fiscal 2019
 
-  get_revenue(ticker: "NVDA", period: "FY2019")
+  get_figure(ticker: "NVDA", figure: "revenue", period: "FY2019")
 
   available: false
   We don't have data going back that far: FY2019 is earlier than anything Ticker Scout
@@ -313,9 +241,15 @@ Each takes `ticker` and `period?` and returns the figure for every period (or th
 ```
 
 ```
+> Microsoft's revenue, net income and EPS in one call
+
+  get_figure(ticker: "MSFT", figure: ["revenue", "net income", "eps"], period: "latest quarter")
+```
+
+```
 > NVIDIA Data Center revenue, every quarter held
 
-  get_figure_history(ticker: "NVDA", figure: "Data Center")
+  get_figure(ticker: "NVDA", figure: "Data Center", period: "all")
 ```
 
 ## Data policy
@@ -362,7 +296,7 @@ npm run sweep -- <site dir>   # every tool, every company, against a local copy 
 npm run deploy
 ```
 
-`npm test` covers the pure logic. `test/smoke.mjs` calls the tools against a running server for a deliberately shape-diverse set of companies (a conventional company, a bank, an insurance conglomerate, a retailer far ahead of the calendar, a foreign issuer) plus negative cases. `test/sweep.mjs` runs every tool for every covered company in-process, serving the site's files from a local directory, and fails on any error.
+`npm test` covers the pure logic. `test/smoke.mjs` calls the tools against a running server for a deliberately shape-diverse set of companies (a conventional company, a bank, an insurance conglomerate, a retailer far ahead of the calendar, a foreign issuer) plus negative cases. `test/sweep.mjs` runs every tool for every covered company in-process, plus every topic, statement, breakdown and metric kind, serving the site's files from a local directory, and fails on any error. A unit test keeps `tools/list` under 40 KB.
 
 ## License
 

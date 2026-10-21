@@ -5,6 +5,7 @@ import { registerStatementTools } from "./tools/statements.ts";
 import { registerFigureTools } from "./tools/figures.ts";
 import { registerReferenceTools } from "./tools/reference.ts";
 import { registerDocumentTools } from "./tools/documents.ts";
+import { recordCalls } from "./record.ts";
 
 export const SERVER_VERSION = "3.0.1";
 
@@ -38,7 +39,8 @@ function toolDefinitions(): ToolDefinition[] {
   const collected: ToolDefinition[] = [];
   const collector = {
     registerTool: (name: string, config: unknown, handler: unknown) => {
-      collected.push([name, config, handler]);
+      const takesArgs = (config as { inputSchema?: unknown }).inputSchema !== undefined;
+      collected.push([name, config, recordCalls(name, handler as Parameters<typeof recordCalls>[1], takesArgs, SERVER_VERSION)]);
     },
   } as unknown as McpServer;
   registerCoreTools(collector);

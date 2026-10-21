@@ -265,7 +265,9 @@ Free to read and cite. Please attribute "Ticker Scout (tickerscout.ai)".
 
 A stateless Cloudflare Worker using `createMcpHandler` from `@modelcontextprotocol/server`, speaking streamable HTTP at `/mcp`.
 
-The server stores no data. Every tool call fetches the corresponding files from `https://tickerscout.ai` through the Cloudflare edge cache and shapes the response; a question about an older period reads that record's permanent dated URL. There is no database, no snapshot and no fallback copy: if an upstream file cannot be fetched, the tool returns an error naming the URL and the status rather than serving something stale.
+The server holds no financial data of its own. Every tool call fetches the corresponding files from `https://tickerscout.ai` through the Cloudflare edge cache and shapes the response; a question about an older period reads that record's permanent dated URL. There is no database, no snapshot and no fallback copy: if an upstream file cannot be fetched, the tool returns an error naming the URL and the status rather than serving something stale.
+
+Each tool call is recorded: which tool, when, its inputs and whether it succeeded. The record includes no IP address. See `src/record.ts` and the [privacy policy](https://tickerscout.ai/privacy).
 
 ```
 src/
@@ -281,6 +283,7 @@ src/
   markdown.ts    Section parsing for the .md documents
   financials.ts  Headline condensing and unit-safe slicing
   respond.ts     Result shaping, source URL and attribution
+  record.ts      The per-call record (tool, inputs, outcome; no IP address)
   tools/         Tool registration, one module per group
 ```
 
